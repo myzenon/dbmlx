@@ -1,0 +1,112 @@
+# 01 — Architecture
+
+## Runtime topology
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  VSCode Process                                                │
+│                                                                │
+│  ┌──────────────────────┐        ┌──────────────────────────┐ │
+│  │ Extension Host       │        │ Webview (Chromium)       │ │
+│  │ (Node.js)            │◀──────▶│ (Preact + custom render) │ │
+│  │                      │ post   │                          │ │
+│  │ - FS watchers        │ Message│ - Spatial index          │ │
+│  │ - @dbml/core parser  │        │ - Viewport culling       │ │
+│  │ - Layout JSON I/O    │        │ - LOD rendering          │ │
+│  │ - Command handlers   │        │ - Drag controller        │ │
+│  └──────────────────────┘        └──────────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Aislamiento**: el extension host corre en Node.js; el webview es un iframe sandboxed sin acceso directo al FS. Toda I/O pasa por `postMessage`.
+
+## Módulos del extension host (`src/extension/`)
+
+| Módulo | Responsabilidad |
+|---|---|
+| `extension.ts` | `activate()` / `deactivate()`. Registra comandos. |
+| `panel.ts` | Ciclo de vida del webview. `DiagramPanel` class (singleton por archivo DBML). |
+| `parser.ts` | Wrapper sobre `@dbml/core`. Input: string. Output: modelo interno (`Schema`). Maneja errores de parse. |
+| `layoutStore.ts` | Read/write sidecar JSON. Escritura atómica (tmp + rename). Ordering estable. |
+| `watcher.ts` | `vscode.workspace.createFileSystemWatcher` para `.dbml` y `.dbml.layout.json`. |
+| `protocol.ts` | Tipos TypeScript de mensajes host↔webview. Compartido vía `src/shared/types.ts`. |
+
+## Módulos del webview (`src/webview/`)
+
+| Módulo | Responsabilidad |
+|---|---|
+| `main.tsx` | Entry point Preact. Listener de `postMessage`. |
+| `app.tsx` | Root component. Conecta state → renderer. |
+| `render/spatialIndex.ts` | Grid bucketing de 512x512px. `insert/move/remove/query(bbox)`. |
+| `render/viewport.ts` | Estado de pan/zoom. Conversión pantalla↔mundo. Query al spatial index. |
+| `render/tableNode.tsx` | Componente de una tabla (LOD-aware). |
+| `render/edgeLayer.tsx` | SVG overlay único con `<path>` por edge. |
+| `render/edgeRouter.ts` | Cálculo de path ortogonal Manhattan. |
+| `render/lod.ts` | Determina LOD level según zoom. |
+| `drag/dragController.ts` | Handler pointerdown/move/up con mutación DOM directa. |
+| `layout/autoLayout.ts` | Wrapper sobre `@dagrejs/dagre`. Top-down, nodesep/ranksep configurables. |
+| `groups/groupPanel.tsx` | UI lateral con lista de grupos y toggles. |
+| `state/store.ts` | Zustand store. Selectores granulares. |
+
+## Protocolo host↔webview
+
+Mensajes serializados como JSON. Discriminador: campo `type`.
+
+### Host → Webview
+
+```ts
+type HostToWebview =
+  | { type: 'schema:update'; payload: { schema: Schema; parseError: null | ParseError } }
+  | { type: 'layout:loaded'; payload: Layout }
+  | { type: 'layout:external-change'; payload: Layout }  // git pull o edición externa
+  | { type: 'theme:change'; payload: { kind: 'light' | 'dark' } };
+```
+
+### Webview → Host
+
+```ts
+type WebviewToHost =
+  | { type: 'ready' }
+  | { type: 'layout:persist'; payload: Partial<Layout> }  // deltas, debounced 300ms
+  | { type: 'command:reveal'; payload: { tableName: string } }  // click → go-to-definition
+  | { type: 'command:pruneOrphans' }  // comando explícito
+  | { type: 'error:log'; payload: { message: string; stack?: string } };
+```
+
+## Ciclo de vida de una sesión
+
+1. Usuario abre un `.dbml` en VSC.
+2. Ejecuta `dddbml: Open Diagram` (palette o context menu).
+3. `extension.ts` instancia `DiagramPanel` (reutiliza si ya existe para ese archivo).
+4. `DiagramPanel` crea webview en `ViewColumn.Beside`, carga `media/webview.js`.
+5. Webview envía `ready`.
+6. Host parsea `.dbml` → envía `schema:update`.
+7. Host lee `.dbml.layout.json` (crea vacío si no existe) → envía `layout:loaded`.
+8. Webview hace auto-layout dagre para tablas sin posición conocida, renderiza.
+9. Watchers escuchan cambios en ambos archivos → reenvían mensajes al webview.
+10. Drag en webview → `layout:persist` debounced → host escribe sidecar.
+
+## Dependencias externas
+
+Runtime:
+- `@dbml/core` — parser oficial DBML.
+- `@dagrejs/dagre` — layout DAG.
+- `preact` — UI framework (~3kb).
+- `zustand` — state management.
+
+Build/dev:
+- `typescript` (strict mode).
+- `vite` — bundle del webview.
+- `@vscode/vsce` — packaging.
+- `vitest` — unit tests.
+- `@types/vscode` — tipos de la API.
+
+Package manager: **pnpm** (no npm, no yarn). Lockfile: `pnpm-lock.yaml`. Campo `packageManager` en `package.json` lo señaliza a herramientas.
+
+## Decisiones de arquitectura clave
+
+- **Parser corre en host, no webview**: evita bundlear `@dbml/core` en el webview (tamaño), y permite cachear parse result si el DBML no cambia.
+- **Un único SVG para todas las edges**: reduce DOM nodes, y permite batchear updates durante drag.
+- **No React, Preact**: webview arranca más rápido, menos memoria. API idéntica.
+- **Zustand en vez de Context**: selectores evitan re-renders innecesarios; crítico cuando hay 5000 nodos potenciales.
+- **Webview no persistente** (`retainContextWhenHidden: false`): ahorra memoria cuando usuario cambia de tab; re-hidrata desde host al volver.

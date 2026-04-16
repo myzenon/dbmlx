@@ -1,0 +1,200 @@
+import { Parser } from '@dbml/core';
+import type {
+  Column,
+  ParseError,
+  QualifiedName,
+  Ref,
+  RefEndpointRelation,
+  Schema,
+  Table,
+  TableGroup,
+} from '../shared/types';
+
+/**
+ * Wrapper over @dbml/core Parser.
+ * Input: DBML source string.
+ * Output: internal Schema (plain-data, postMessage-safe) or ParseError.
+ */
+export function parseDbml(source: string): { schema: Schema; error: null } | { schema: null; error: ParseError } {
+  try {
+    const db = Parser.parse(source, 'dbmlv2');
+    const exported = db.export() as unknown as ExportedDatabase;
+    return { schema: mapExportedToSchema(exported), error: null };
+  } catch (err) {
+    return { schema: null, error: toParseError(err) };
+  }
+}
+
+function toParseError(err: unknown): ParseError {
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown>;
+    const message = typeof e.message === 'string' ? e.message : String(err);
+    const diags = (e.diags ?? e.diagnostics) as unknown;
+    if (Array.isArray(diags) && diags.length > 0) {
+      const first = diags[0] as Record<string, unknown>;
+      const loc = first.location as Record<string, unknown> | undefined;
+      const start = loc?.start as Record<string, unknown> | undefined;
+      return {
+        message: typeof first.message === 'string' ? first.message : message,
+        line: typeof start?.line === 'number' ? start.line : undefined,
+        column: typeof start?.column === 'number' ? start.column : undefined,
+      };
+    }
+    return { message };
+  }
+  return { message: String(err) };
+}
+
+/* ----- AST mapping ----- */
+
+interface ExportedField {
+  name: string;
+  type: unknown;
+  unique: boolean;
+  pk: boolean;
+  not_null: boolean;
+  note: string;
+  dbdefault: unknown;
+  increment: boolean;
+}
+
+interface ExportedTable {
+  fields: ExportedField[];
+  name: string;
+  alias: string | null;
+  note: string;
+  headerColor: string | null;
+}
+
+interface ExportedRef {
+  endpoints: Array<{
+    schemaName: string | null;
+    tableName: string;
+    fieldNames: string[];
+    relation: unknown;
+  }>;
+  name: string | null;
+  onDelete: unknown;
+  onUpdate: unknown;
+}
+
+interface ExportedTableGroup {
+  name: string;
+  tables: Array<{ schemaName: string | null; tableName: string }>;
+}
+
+interface ExportedSchema {
+  name: string;
+  tables: ExportedTable[];
+  refs: ExportedRef[];
+  tableGroups: ExportedTableGroup[];
+}
+
+interface ExportedDatabase {
+  schemas: ExportedSchema[];
+}
+
+function qualify(schemaName: string | null | undefined, tableName: string): QualifiedName {
+  return `${schemaName && schemaName.length > 0 ? schemaName : 'public'}.${tableName}`;
+}
+
+function mapExportedToSchema(db: ExportedDatabase): Schema {
+  const tables: Table[] = [];
+  const refs: Ref[] = [];
+  const groups: TableGroup[] = [];
+  const tableToGroup = new Map<QualifiedName, string>();
+
+  for (const s of db.schemas) {
+    const schemaName = s.name && s.name.length > 0 ? s.name : 'public';
+
+    for (const g of s.tableGroups ?? []) {
+      const members: QualifiedName[] = [];
+      for (const t of g.tables ?? []) {
+        const q = qualify(t.schemaName ?? schemaName, t.tableName);
+        members.push(q);
+        tableToGroup.set(q, g.name);
+      }
+      members.sort();
+      groups.push({ name: g.name, tables: members });
+    }
+
+    for (const t of s.tables ?? []) {
+      const qn = qualify(schemaName, t.name);
+      tables.push({
+        name: qn,
+        schemaName,
+        tableName: t.name,
+        columns: (t.fields ?? []).map(mapField),
+        note: t.note || null,
+        groupName: tableToGroup.get(qn) ?? null,
+      });
+    }
+
+    for (const r of s.refs ?? []) {
+      const mapped = mapRef(r, schemaName);
+      if (mapped) refs.push(mapped);
+    }
+  }
+
+  tables.sort((a, b) => a.name.localeCompare(b.name));
+  groups.sort((a, b) => a.name.localeCompare(b.name));
+
+  return { tables, refs, groups };
+}
+
+function mapField(f: ExportedField): Column {
+  return {
+    name: f.name,
+    type: typeName(f.type),
+    pk: f.pk || undefined,
+    notNull: f.not_null || undefined,
+    unique: f.unique || undefined,
+    increment: f.increment || undefined,
+    default: f.dbdefault != null ? String((f.dbdefault as { value?: unknown })?.value ?? f.dbdefault) : null,
+    note: f.note || null,
+  };
+}
+
+function typeName(t: unknown): string {
+  if (typeof t === 'string') return t;
+  if (t && typeof t === 'object') {
+    const o = t as Record<string, unknown>;
+    if (typeof o.type_name === 'string') return o.type_name;
+    if (typeof o.name === 'string') return o.name;
+  }
+  return 'unknown';
+}
+
+function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
+  if (!r.endpoints || r.endpoints.length !== 2) return null;
+  const [a, b] = r.endpoints;
+  if (!a || !b) return null;
+  const source = {
+    table: qualify(a.schemaName ?? defaultSchemaName, a.tableName),
+    columns: a.fieldNames.slice(),
+    relation: normalizeRelation(a.relation),
+  };
+  const target = {
+    table: qualify(b.schemaName ?? defaultSchemaName, b.tableName),
+    columns: b.fieldNames.slice(),
+    relation: normalizeRelation(b.relation),
+  };
+  const id = stableRefId(source.table, source.columns, target.table, target.columns);
+  return { id, source, target, name: r.name || null };
+}
+
+function normalizeRelation(rel: unknown): RefEndpointRelation {
+  if (rel === '*' || rel === 'many' || rel === '>') return '*';
+  return '1';
+}
+
+function stableRefId(
+  srcTable: string,
+  srcCols: string[],
+  tgtTable: string,
+  tgtCols: string[],
+): string {
+  const a = `${srcTable}(${[...srcCols].sort().join(',')})`;
+  const b = `${tgtTable}(${[...tgtCols].sort().join(',')})`;
+  return a < b ? `${a}->${b}` : `${b}->${a}`;
+}

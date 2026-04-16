@@ -1,0 +1,119 @@
+:root {
+  --ddd-border: var(--vscode-panel-border, #444);
+  --ddd-bg-table: var(--vscode-editorWidget-background, #252526);
+  --ddd-bg-header: var(--vscode-titleBar-activeBackground, #333);
+  --ddd-fg: var(--vscode-foreground, #ddd);
+  --ddd-fg-muted: var(--vscode-descriptionForeground, #999);
+  --ddd-accent: var(--vscode-focusBorder, #007acc);
+  --ddd-edge: var(--vscode-editorLineNumber-foreground, #888);
+}
+
+.ddd-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  cursor: grab;
+}
+.ddd-viewport.is-panning { cursor: grabbing; }
+
+.ddd-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.ddd-table {
+  width: 240px;
+  background: var(--ddd-bg-table);
+  border: 1px solid var(--ddd-border);
+  border-top-width: 3px;
+  border-top-color: var(--ddd-accent);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ddd-fg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  user-select: none;
+  cursor: grab;
+  touch-action: none;
+}
+.ddd-table:active { cursor: grabbing; }
+body.ddd-is-dragging { cursor: grabbing !important; }
+body.ddd-is-dragging .ddd-table:not(:active) { pointer-events: none; }
+
+.ddd-table__header {
+  padding: 6px 10px;
+  background: var(--ddd-bg-header);
+  font-weight: 600;
+  border-bottom: 1px solid var(--ddd-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ddd-table__schema { color: var(--ddd-fg-muted); font-weight: 400; }
+
+.ddd-table__cols {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+}
+.ddd-table__col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.ddd-table__col-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.ddd-table__col-name.is-pk { color: var(--ddd-accent); font-weight: 600; }
+.ddd-table__col-type { color: var(--ddd-fg-muted); font-size: 11px; }
+.ddd-table__flag {
+  font-size: 10px;
+  color: var(--ddd-fg-muted);
+  padding: 0 3px;
+  border: 1px solid var(--ddd-border);
+  border-radius: 3px;
+}
+
+.ddd-edges path.ddd-edge {
+  stroke: var(--ddd-edge);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.ddd-banner {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  padding: 6px 10px;
+  background: var(--vscode-inputValidation-errorBackground, rgba(200, 40, 40, 0.2));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #c82828);
+  color: var(--vscode-inputValidation-errorForeground, #fff);
+  border-radius: 3px;
+  font-size: 12px;
+  z-index: 10;
+}
+.ddd-statusbar {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  background: var(--vscode-statusBar-background, rgba(0,0,0,0.5));
+  color: var(--vscode-statusBar-foreground, #ccc);
+  font-size: 11px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.ddd-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ddd-fg-muted);
+  font-size: 13px;
+}

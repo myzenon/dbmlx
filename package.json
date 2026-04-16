@@ -1,0 +1,95 @@
+{
+  "name": "dddbml",
+  "displayName": "dddbml — DBML Diagram with Git-friendly Layout",
+  "description": "Interactive DBML diagram renderer for VSCode with per-table position persistence, TableGroup collapse for DDD contexts, and viewport culling for large schemas (5000+ tables).",
+  "version": "0.1.0",
+  "publisher": "dddbml",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "dbml",
+    "diagram",
+    "erd",
+    "database",
+    "schema",
+    "ddd"
+  ],
+  "main": "./dist/extension/extension.js",
+  "packageManager": "pnpm@10.33.0",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dddbml.openDiagram",
+        "title": "dddbml: Open Diagram",
+        "category": "dddbml"
+      },
+      {
+        "command": "dddbml.resetLayout",
+        "title": "dddbml: Reset Layout (re-run auto-layout)",
+        "category": "dddbml"
+      },
+      {
+        "command": "dddbml.pruneOrphans",
+        "title": "dddbml: Prune orphan layout entries",
+        "category": "dddbml"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "when": "resourceExtname == .dbml",
+          "command": "dddbml.openDiagram",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .dbml",
+          "command": "dddbml.openDiagram",
+          "group": "navigation"
+        }
+      ]
+    },
+    "languages": [
+      {
+        "id": "dbml",
+        "extensions": [".dbml"],
+        "aliases": ["DBML", "dbml"]
+      }
+    ]
+  },
+  "activationEvents": [
+    "onLanguage:dbml"
+  ],
+  "scripts": {
+    "build:extension": "tsc -p tsconfig.extension.json",
+    "build:webview": "vite build",
+    "build": "pnpm run build:extension && pnpm run build:webview",
+    "watch:extension": "tsc -p tsconfig.extension.json --watch",
+    "watch:webview": "vite build --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "pnpm run build"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
+    "@dbml/core": "^3.9.0",
+    "preact": "^10.22.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.3.0",
+    "vitest": "^2.0.0"
+  }
+}
