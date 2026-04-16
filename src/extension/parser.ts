@@ -94,8 +94,20 @@ interface ExportedDatabase {
   schemas: ExportedSchema[];
 }
 
+function unquote(s: string): string {
+  if (!s) return s;
+  const first = s.charAt(0);
+  const last = s.charAt(s.length - 1);
+  if ((first === '"' && last === '"') || (first === "'" && last === "'") || (first === '`' && last === '`')) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
 function qualify(schemaName: string | null | undefined, tableName: string): QualifiedName {
-  return `${schemaName && schemaName.length > 0 ? schemaName : 'public'}.${tableName}`;
+  const s = unquote((schemaName ?? '').trim());
+  const t = unquote(tableName.trim());
+  return `${s && s.length > 0 ? s : 'public'}.${t}`;
 }
 
 function mapExportedToSchema(db: ExportedDatabase): Schema {
@@ -115,15 +127,16 @@ function mapExportedToSchema(db: ExportedDatabase): Schema {
         tableToGroup.set(q, g.name);
       }
       members.sort();
-      groups.push({ name: g.name, tables: members });
+      groups.push({ name: unquote(g.name), tables: members });
     }
 
     for (const t of s.tables ?? []) {
-      const qn = qualify(schemaName, t.name);
+      const cleanName = unquote(t.name);
+      const qn = qualify(schemaName, cleanName);
       tables.push({
         name: qn,
         schemaName,
-        tableName: t.name,
+        tableName: cleanName,
         columns: (t.fields ?? []).map(mapField),
         note: t.note || null,
         groupName: tableToGroup.get(qn) ?? null,
@@ -144,7 +157,7 @@ function mapExportedToSchema(db: ExportedDatabase): Schema {
 
 function mapField(f: ExportedField): Column {
   return {
-    name: f.name,
+    name: unquote(f.name),
     type: typeName(f.type),
     pk: f.pk || undefined,
     notNull: f.not_null || undefined,
@@ -171,12 +184,12 @@ function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
   if (!a || !b) return null;
   const source = {
     table: qualify(a.schemaName ?? defaultSchemaName, a.tableName),
-    columns: a.fieldNames.slice(),
+    columns: a.fieldNames.map(unquote),
     relation: normalizeRelation(a.relation),
   };
   const target = {
     table: qualify(b.schemaName ?? defaultSchemaName, b.tableName),
-    columns: b.fieldNames.slice(),
+    columns: b.fieldNames.map(unquote),
     relation: normalizeRelation(b.relation),
   };
   const id = stableRefId(source.table, source.columns, target.table, target.columns);
