@@ -1,59 +1,14 @@
-# DBMLX Language
+# DBMLX Language — AI Reference
 
-`.dbmlx` is a superset of DBML (Database Markup Language). All valid DBML is valid `.dbmlx`. Extensions: `!include` for multi-file schemas, `DiagramView` for named filtered views, and migration diff annotations (`[add]`, `[drop]`, `[modify:]`).
-
-Files use the `.dbmlx` extension. The VSCode extension (DBMLX) renders them as interactive diagrams.
-
-Full reference: `docs/language-reference.md`
-
----
-
-## Core syntax (inherited from DBML)
-
-```dbmlx
-Table schema.table_name {
-  id          int           [pk, increment]
-  name        varchar(255)  [not null]
-  email       text          [unique]
-  amount      decimal(10,2) [default: 0]
-  note        text          [null, note: 'optional']
-  created_at  timestamp     [default: `now()`]
-
-  indexes {
-    (email)       [unique, name: "uq_email"]
-    (name, email) [name: "idx_name_email"]
-  }
-
-  Note: 'Table-level description'
-}
-
-// Refs (foreign keys)
-Ref: orders.user_id > users.id       // many-to-one
-Ref: users.id < orders.user_id       // one-to-many
-Ref: users.id - profiles.user_id     // one-to-one
-Ref: posts.id <> tags.id             // many-to-many
-Ref: orders.(user_id, org_id) > users.(id, org_id)  // composite
-
-// Inline ref inside Table
-Table orders {
-  user_id  int  [ref: > users.id]
-}
-
-// Enums
-Enum status { active inactive pending }
-
-// TableGroups (bounded contexts)
-TableGroup billing { orders invoices payments }
-
-// Project metadata
-Project my_app { Note: 'Main schema' }
-```
-
-Schema prefix is optional: `Table users` = `Table public.users`.
+DBMLX (`.dbmlx`) is a superset of DBML. All standard DBML syntax is valid.
+This file documents only the dbmlx-specific extensions that don't exist in standard DBML.
 
 ---
 
 ## !include — multi-file schemas
+
+Split large schemas across files. Paths are relative to the including file.
+Includes are resolved before parsing; the parser sees one stitched document.
 
 ```dbmlx
 !include "auth/users.dbmlx"
@@ -62,13 +17,12 @@ Schema prefix is optional: `Table users` = `Table public.users`.
 Ref: users.id < invoices.user_id
 ```
 
-Paths are relative to the including file. Resolved before parsing.
-
 ---
 
 ## DiagramView — named filtered views
 
-Each view has its own layout file. Switching views in the diagram sidebar loads that view's saved positions.
+Define multiple named views of the same schema. Each view has its own layout file.
+Views filter which tables are shown; the underlying schema is unchanged.
 
 ```dbmlx
 DiagramView auth_context {
@@ -82,63 +36,100 @@ DiagramView billing_overview {
 DiagramView tenant_schema {
   Schemas { tenant }
 }
+
+DiagramView everything {
+  Tables { * }
+}
 ```
 
-Sections (`Tables`, `TableGroups`, `Schemas`) are unioned. Multiple sections = show tables matching any. Omit sections or use `*` to show all.
+Sections inside a view:
+- `Tables { name, name, ... }` — show only these tables (use `*` for all)
+- `TableGroups { name, ... }` — show all tables belonging to these TableGroups
+- `Schemas { name, ... }` — show all tables in these schemas
+
+Multiple sections in one view are unioned.
 
 ---
 
 ## Migration diff annotations
 
-Annotate columns to visualize a schema migration. Annotations are stripped before parsing — they never cause errors.
+Annotate columns to visualize a schema migration as a before/after diff in the diagram.
+
+### Key rule: write the column in its NEW (post-migration) state.
+Record the original values inside the annotation. This means Refs and indexes
+always reference the new column name, which is correct for the post-migration schema.
 
 ```dbmlx
 Table orders {
-  id        int           [pk]
-  amount    decimal(10,2) [add]                             // new column — green + prefix
-  total     decimal       [drop]                            // removed — red strikethrough
-  customer  varchar(100)  [modify: name="customer_id" type="int"]  // rename+retype — amber two-row
-  status    varchar(50)   [not null] [drop]                 // combines with standard settings
+  id           int           [pk]
+  status       varchar(50)
+
+  amount       decimal(10,2) [add]
+  // new column being added — rendered with green accent
+
+  total        decimal       [drop]
+  // column being removed — rendered with red strikethrough
+
+  customer_id  int           [modify: name="customer", type="varchar(100)"]
+  // renamed + retyped: NEW name/type on the line, ORIGINAL name/type in [modify:]
+  // rendered as two rows: original (strikethrough) → new (amber)
+
+  email        varchar(255)  [modify: type="varchar(100)"]
+  // type change only — omit name= when the column name is unchanged
+
+  notes        text          [not null, drop]
+  // [drop] and [add] combine freely with standard column settings
 }
+
+// Refs use the NEW column name
+Ref: orders.customer_id > customers.id
 ```
 
-- `[add]` — column is being added. Renders green with `+` prefix.
-- `[drop]` — column is being removed. Renders red with strikethrough. Kept in parse for FK checks.
-- `[modify: name="x" type="y"]` — rename and/or retype. Both attributes optional. Renders before→after.
+Annotation summary:
+- `[add]`  — column is being added; does not exist before migration
+- `[drop]` — column is being removed; will not exist after migration
+- `[modify: name="old_name" type="old_type"]` — column renamed and/or retyped;
+  both `name=` and `type=` are optional (omit whichever didn't change)
 
 ---
 
-## Layout sidecar files
+## Standard DBML — quick reference
 
-Positions, viewport, group state, and edge offsets are stored alongside the schema. One file per view.
+```dbmlx
+Table schema.table_name [headercolor: "#hex"] {
+  id           int           [pk, increment]
+  name         varchar(255)  [not null, unique]
+  status       job_status
+  created_at   timestamp     [default: `now()`]
+  meta         jsonb         [null, note: 'extra data']
+  user_id      int           [ref: > users.id]
 
-| View | File |
-|---|---|
-| Default | `schema.dbmlx.layout.json` |
-| Named `auth_context` | `schema.dbmlx.auth_context.layout.json` |
+  indexes {
+    (name, status) [name: "idx_name_status", unique]
+  }
 
-Format: keys alphabetically sorted, integer coords, `false`/zero values omitted for minimal Git diffs.
-
-```json
-{
-  "version": 1,
-  "viewport": { "x": 0, "y": 0, "zoom": 1.0 },
-  "tables": { "public.users": { "x": 120, "y": 80 } },
-  "groups": { "billing": { "collapsed": true, "color": "#D0E8FF" } },
-  "edges": {}
+  Note: 'Free-form table description'
 }
+
+Enum job_status {
+  created
+  running
+  done
+  failure [note: 'terminal state']
+}
+
+TableGroup billing {
+  orders
+  invoices
+  payments
+}
+
+// Refs (can be top-level or inline)
+Ref: orders.user_id > users.id     // many-to-one
+Ref: users.id < orders.user_id     // one-to-many
+Ref: users.id - profiles.user_id   // one-to-one
+Ref: tags.id <> posts.id           // many-to-many
+
+// Composite FK
+Ref: orders.(user_id, tenant_id) > users.(id, tenant_id)
 ```
-
-Commit layout files alongside schema — teammates see the same diagram on checkout.
-
----
-
-## What AI assistants should know
-
-- Generate `.dbmlx`, not `.dbml` — the file extension matters for the extension to activate.
-- `[add]`/`[drop]`/`[modify:]` are safe to use — the extension strips them before the DBML parser sees them.
-- `!include` paths must be relative. Do not use absolute paths.
-- `DiagramView` blocks go in the root schema file, not in included files.
-- TableGroup member names are unqualified (no schema prefix).
-- Layout files are machine-managed — do not edit them by hand unless correcting positions.
-- To scaffold a migration: copy the current table, annotate changed columns with `[add]`/`[drop]`/`[modify:]`.
