@@ -98,7 +98,7 @@ const INDEX_SETTING_HOVER: Record<string, { title: string; body: string }> = {
   unique: { title: 'unique index', body: 'Creates a unique index — no two rows may have the same value(s) for the indexed column(s).' },
   pk: { title: 'pk — Primary Key index', body: 'Marks the index as the table\'s primary key.' },
   name: { title: 'name', body: 'Assigns an explicit name to the index.\n\n```dbmlx\ncol [name: \'idx_orders_created_at\']\n```' },
-  type: { title: 'type', body: 'Index access method.\n\n- `btree` — balanced tree, supports range queries (default)\n- `hash` — equality lookups only, faster for `=`' },
+  type: { title: 'type', body: 'Index access method.\n\n- `btree` — balanced tree, supports range queries (default)\n- `hash` — equality lookups only, faster for `=`\n- `gin` — Generalized Inverted Index; arrays, JSONB, full-text search\n- `gist` — Generalized Search Tree; geometric types, full-text\n- `spgist` — Space-Partitioned GiST; non-balanced structures\n- `brin` — Block Range Index; large tables with natural ordering' },
   note: { title: 'note', body: 'Human-readable description for the index.' },
 };
 
@@ -360,8 +360,12 @@ const INDEX_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Completi
   { label: 'unique', doc: 'Unique index — no duplicate values.' },
   { label: 'pk', doc: 'Primary key index.' },
   { label: 'name: ', doc: 'Explicit index name.', kind: vscode.CompletionItemKind.Property },
-  { label: 'type: btree', doc: 'B-tree index (default). Supports range queries.', kind: vscode.CompletionItemKind.EnumMember },
-  { label: 'type: hash', doc: 'Hash index. Optimised for equality lookups only.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'type: btree',  doc: 'B-tree index (default). Supports range queries and sorting.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'type: hash',   doc: 'Hash index. Optimised for equality lookups only.',            kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'type: gin',    doc: 'GIN index. Arrays, JSONB, full-text search.',                 kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'type: gist',   doc: 'GiST index. Geometric types, full-text, nearest-neighbor.',  kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'type: spgist', doc: 'SP-GiST index. Non-balanced structures (IP ranges etc.).',   kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'type: brin',   doc: 'BRIN index. Very large tables with natural physical ordering.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'note: ', doc: 'Index note/comment.', kind: vscode.CompletionItemKind.Property },
 ];
 
@@ -500,8 +504,12 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       // After `type:` inside an index settings bracket → index type values
       if (block === 'indexes' && /\btype\s*:\s*\w*$/.test(linePrefix)) {
         return [
-          this.makeItem('btree', 'B-tree (default) — range queries', vscode.CompletionItemKind.EnumMember),
-          this.makeItem('hash', 'Hash — equality lookups only', vscode.CompletionItemKind.EnumMember),
+          this.makeItem('btree',  'B-tree (default) — range queries, sorting',          vscode.CompletionItemKind.EnumMember),
+          this.makeItem('hash',   'Hash — equality lookups only',                        vscode.CompletionItemKind.EnumMember),
+          this.makeItem('gin',    'GIN — arrays, JSONB, full-text search',               vscode.CompletionItemKind.EnumMember),
+          this.makeItem('gist',   'GiST — geometric types, full-text, nearest-neighbor', vscode.CompletionItemKind.EnumMember),
+          this.makeItem('spgist', 'SP-GiST — non-balanced structures (IP ranges, etc.)', vscode.CompletionItemKind.EnumMember),
+          this.makeItem('brin',   'BRIN — large tables with natural physical ordering',  vscode.CompletionItemKind.EnumMember),
         ];
       }
       const settings = block === 'indexes' ? INDEX_SETTINGS : COLUMN_SETTINGS;

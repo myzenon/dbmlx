@@ -18,6 +18,17 @@ let active = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 const PERSIST_DEBOUNCE_MS = 300;
 
+type PositionSnapshot = Array<[string, { x: number; y: number }]>;
+const undoStack: PositionSnapshot[] = [];
+const MAX_UNDO = 50;
+
+export function undoLastDrag(): void {
+  const snapshot = undoStack.pop();
+  if (!snapshot) return;
+  store.getState().setPositionsBatch(snapshot);
+  schedulePersist();
+}
+
 export function startDrag(e: PointerEvent, tableName: string, node: HTMLElement): void {
   if (active || e.button !== 0) return;
   const state = store.getState();
@@ -38,6 +49,7 @@ export function startDrag(e: PointerEvent, tableName: string, node: HTMLElement)
     const p = state.positions.get(n);
     if (p) origins.set(n, { x: p.x, y: p.y });
   }
+  const preSnapshot: PositionSnapshot = Array.from(origins.entries()).map(([n, p]) => [n, { ...p }]);
 
   active = true;
   e.stopPropagation();
@@ -75,6 +87,18 @@ export function startDrag(e: PointerEvent, tableName: string, node: HTMLElement)
     node.style.willChange = '';
     try { node.releasePointerCapture(ev.pointerId); } catch { /* noop */ }
     document.body.classList.remove('ddd-is-dragging');
+
+    // Only push undo entry if any position actually changed
+    const finalPositions = store.getState().positions;
+    const moved = preSnapshot.some(([n, p]) => {
+      const fp = finalPositions.get(n);
+      return fp && (fp.x !== p.x || fp.y !== p.y);
+    });
+    if (moved) {
+      undoStack.push(preSnapshot);
+      if (undoStack.length > MAX_UNDO) undoStack.shift();
+    }
+
     schedulePersist();
   };
 

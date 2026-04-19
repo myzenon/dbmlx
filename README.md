@@ -12,10 +12,10 @@ Your schema stays in plain text. The extension reads it, renders it, and persist
 
 ## Install
 
-From the VSCode Marketplace *(coming soon)*, or from a VSIX:
+**[Install from VSCode Marketplace](https://marketplace.visualstudio.com/items?itemName=si-zenon.dbmlx)** — or download a `.vsix` from [GitHub Releases](https://github.com/myzenon/dbmlx/releases) and install manually:
 
 ```bash
-code --install-extension dbmlx-0.1.3.vsix
+code --install-extension dbmlx-<version>.vsix
 ```
 
 Open any `.dbmlx` file, then run **`DBMLX: Open Diagram`** from the command palette, or click the icon in the editor title bar.

@@ -2,7 +2,7 @@
   "name": "dbmlx",
   "displayName": "DBMLX: Database Visual and Design",
   "description": "Interactive .dbmlx diagram renderer for VSCode. Git-friendly layout persistence, DDD-aware TableGroup contexts, LSP intelligence, SVG/PNG export, and viewport culling for 5000+ tables.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "si-zenon",
   "icon": "docs/icon.png",
   "engines": {
@@ -168,6 +168,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "vsce package --no-dependencies",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version": "node scripts/sync-version.mjs && git add README.md llms.txt",
     "vscode:prepublish": "pnpm run build"
   },
   "dependencies": {

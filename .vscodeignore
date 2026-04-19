@@ -22,7 +22,6 @@ pnpm-lock.yaml
 
 # AI / developer docs (not for end users)
 CLAUDE.md
-llms.txt
 docs/language-reference.md
 docs/dddbml-logo.svg
 docs/screenshots/**

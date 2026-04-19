@@ -1,3 +1,9 @@
+/* Suppress VSCode's focus ring on the webview body — the outer panel border is VSCode-controlled */
+body:focus,
+body:focus-visible {
+  outline: none;
+}
+
 :root {
   --ddd-border: var(--vscode-panel-border, #444);
   --ddd-bg-table: var(--vscode-editorWidget-background, #252526);

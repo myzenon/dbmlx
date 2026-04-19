@@ -8,6 +8,7 @@ import { GroupContainer } from './render/groupContainer';
 import { ZoomButtons } from './render/zoomButtons';
 import { ActionsPanel } from './render/actionsPanel';
 import { panBy, zoomAt } from './render/viewport';
+import { undoLastDrag } from './drag/dragController';
 import { SpatialIndex } from './render/spatialIndex';
 import { lodForZoom } from './render/lod';
 import { GroupPanel, colorForGroup } from './groups/groupPanel';
@@ -349,6 +350,11 @@ export function App(_props: AppProps) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         store.getState().clearSelection();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undoLastDrag();
+        return;
       }
       if (e.key === ' ' && !e.repeat) {
         e.preventDefault();
