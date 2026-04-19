@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { store, useAppStore } from './state/store';
-import { autoLayout, estimateSize } from './layout/autoLayout';
+import { autoLayout, estimateSize, tableActualHeight } from './layout/autoLayout';
 import { TableNode } from './render/tableNode';
 import { EdgeLayer } from './render/edgeLayer';
 import { CollapsedGroupNode } from './render/collapsedGroupNode';
@@ -56,6 +56,7 @@ export function App(_props: AppProps) {
   const viewport = useAppStore((s) => s.viewport);
   const ready = useAppStore((s) => s.ready);
   const groupState = useAppStore((s) => s.groups);
+  const showGroupBoundary = useAppStore((s) => s.showGroupBoundary);
   const individuallyHidden = useAppStore((s) => s.hiddenTables);
   const tableColors = useAppStore((s) => s.tableColors);
   const selection = useAppStore((s) => s.selection);
@@ -69,7 +70,7 @@ export function App(_props: AppProps) {
       return estimateSize(t?.columns.length ?? 0);
     };
     const layoutTargets = positions.size === 0 ? schema.tables : missing;
-    const laidOut = autoLayout(layoutTargets, schema.refs, sizeOf, store.getState().layoutAlgorithm, store.getState().groupAwareLayout);
+    const laidOut = autoLayout(layoutTargets, schema.refs, sizeOf, store.getState().layoutAlgorithm, store.getState().showGroupBoundary);
     const entries: Array<[QualifiedName, { x: number; y: number }]> = [];
     for (const [name, pos] of laidOut) entries.push([name, pos]);
     if (entries.length > 0) store.getState().setPositionsBatch(entries);
@@ -123,11 +124,12 @@ export function App(_props: AppProps) {
           const pos = positions.get(t);
           if (!pos) continue;
           const table = schema.tables.find((x) => x.name === t);
-          const size = estimateSize(table?.columns.length ?? 0);
+          const w = estimateSize(table?.columns.length ?? 0).width;
+          const h = table ? tableActualHeight(table) : estimateSize(0).height;
           if (pos.x < minX) minX = pos.x;
           if (pos.y < minY) minY = pos.y;
-          if (pos.x + size.width > maxX) maxX = pos.x + size.width;
-          if (pos.y + size.height > maxY) maxY = pos.y + size.height;
+          if (pos.x + w > maxX) maxX = pos.x + w;
+          if (pos.y + h > maxY) maxY = pos.y + h;
           n++;
         }
         if (n > 0) {
@@ -447,9 +449,9 @@ export function App(_props: AppProps) {
       <div class="ddd-viewport" ref={viewportRef} tabIndex={0}>
         {ready && schema.tables.length > 0 ? (
           <div class="ddd-world" style={{ transform: worldTransform }}>
-            {derived.containers.map((c) => (
+            {showGroupBoundary ? derived.containers.map((c) => (
               <GroupContainer key={`container:${c.name}`} name={c.name} x={c.x} y={c.y} w={c.w} h={c.h} color={c.color} />
-            ))}
+            )) : null}
             <EdgeLayer
               refs={visibleRefs}
               positions={positionsEffective}

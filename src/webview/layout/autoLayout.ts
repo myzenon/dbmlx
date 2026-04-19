@@ -99,6 +99,33 @@ function runSnowflake(
 
   if (superDegree(sortedSupers[0]!) === 0) return runCompact(tables, sizeOf, groupAware);
 
+  // Build tablesBySuper early so we can compute bounding boxes for adaptive radii
+  const tablesBySuper = new Map<string, Table[]>();
+  for (const t of tables) {
+    const s = superOf(t);
+    if (!tablesBySuper.has(s)) tablesBySuper.set(s, []);
+    tablesBySuper.get(s)!.push(t);
+  }
+
+  // Estimate the bounding box of a super-node's mini compact grid
+  function superBbox(superName: string): { w: number; h: number } {
+    const members = tablesBySuper.get(superName) ?? [];
+    if (members.length === 0) return { w: 220, h: 80 };
+    const COLS = Math.max(1, Math.ceil(Math.sqrt(members.length)));
+    const GAP_X = 32, GAP_Y = 48;
+    let x = 0, y = 0, col = 0, rowH = 0, maxX = 0, maxY = 0;
+    for (const t of members) {
+      const sz = sizeOf(t.name);
+      maxX = Math.max(maxX, x + sz.width);
+      rowH = Math.max(rowH, sz.height);
+      x += sz.width + GAP_X;
+      col++;
+      if (col >= COLS) { y += rowH + GAP_Y; maxY = y; col = 0; x = 0; rowH = 0; }
+    }
+    if (rowH > 0) maxY = y + rowH;
+    return { w: maxX, h: maxY };
+  }
+
   // BFS on super-nodes
   const visited = new Set<string>();
   const levels: string[][] = [];
@@ -116,39 +143,48 @@ function runSnowflake(
     frontier = next;
   }
 
-  const RING_STEP = groupAware ? 500 : 380;
+  const HGAP = 100; // minimum horizontal gap between super-node bboxes
+  const VGAP = 80;  // minimum vertical gap between super-node bboxes
+  const centerBox = superBbox(levels[0]![0]!);
   const superPos = new Map<string, { cx: number; cy: number }>();
 
   for (const [li, level] of levels.entries()) {
     if (li === 0) {
       superPos.set(level[0]!, { cx: 0, cy: 0 });
     } else {
-      const radius = li * RING_STEP;
+      // Adaptive elliptical radii: ensure the ring center is far enough from the
+      // center super-node bbox so edges of adjacent bboxes don't overlap.
+      const maxW = Math.max(...level.map((s) => superBbox(s).w));
+      const maxH = Math.max(...level.map((s) => superBbox(s).h));
+      const rx = Math.max(300, (centerBox.w / 2 + maxW / 2 + HGAP)) * li;
+      const ry = Math.max(220, (centerBox.h / 2 + maxH / 2 + VGAP)) * li;
+
       const step = (2 * Math.PI) / level.length;
       for (let i = 0; i < level.length; i++) {
         const angle = i * step - Math.PI / 2;
         superPos.set(level[i]!, {
-          cx: Math.round(radius * Math.cos(angle)),
-          cy: Math.round(radius * Math.sin(angle)),
+          cx: Math.round(rx * Math.cos(angle)),
+          cy: Math.round(ry * Math.sin(angle)),
         });
       }
     }
   }
 
-  // Isolated super-nodes in a row below
+  // Isolated super-nodes: place in a row below the actual bounding box of BFS nodes
   const isolated = [...superAdj.keys()].filter((s) => !visited.has(s));
   if (isolated.length > 0) {
-    const bottomY = levels.length * RING_STEP + 100;
+    let bfsMaxY = 0;
+    for (const [s, pos] of superPos) {
+      const b = superBbox(s);
+      bfsMaxY = Math.max(bfsMaxY, pos.cy + b.h / 2);
+    }
+    const bottomY = Math.round(bfsMaxY) + VGAP + 60;
     let cx = 0;
-    for (const s of isolated) { superPos.set(s, { cx, cy: bottomY }); cx += 400; }
-  }
-
-  // Expand each super-node: single table → place at center; group → mini grid centered at ring pos
-  const tablesBySuper = new Map<string, Table[]>();
-  for (const t of tables) {
-    const s = superOf(t);
-    if (!tablesBySuper.has(s)) tablesBySuper.set(s, []);
-    tablesBySuper.get(s)!.push(t);
+    for (const s of isolated) {
+      const b = superBbox(s);
+      superPos.set(s, { cx, cy: bottomY });
+      cx += b.w + HGAP;
+    }
   }
 
   const out = new Map<QualifiedName, { x: number; y: number }>();
@@ -233,9 +269,19 @@ export const TABLE_BOTTOM_PAD = 8; // matches .ddd-table__cols padding (4 top + 
 
 /**
  * Estimate node height based on column count. Width fixed.
+ * Use tableActualHeight when you have a Table object (accounts for modify rows).
  */
 export function estimateSize(columnCount: number): NodeSize {
   return { width: TABLE_WIDTH, height: TABLE_HEADER_H + columnCount * TABLE_ROW_H + TABLE_BOTTOM_PAD };
+}
+
+/** Actual rendered height of a table, counting [modify] columns as 2 rows. */
+export function tableActualHeight(t: Table): number {
+  let h = TABLE_HEADER_H + TABLE_BOTTOM_PAD;
+  for (const col of t.columns) {
+    h += t.columnChanges?.[col.name]?.kind === 'modify' ? TABLE_ROW_H * 2 : TABLE_ROW_H;
+  }
+  return h;
 }
 
 /** Y offset (from table top) for the vertical center of a column row at `index`. */

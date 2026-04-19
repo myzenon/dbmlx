@@ -25,6 +25,7 @@ export function formatDbmlx(source: string, indent = '  '): string {
   let depth = 0;
   let prevBlank = false;
   let prevTopLevel = false; // was the last non-blank line at depth 0?
+  let prevTopLevelWasBlock = false; // did the previous top-level line open a block?
 
   for (let i = 0; i < rawLines.length; i++) {
     const raw = rawLines[i]!;
@@ -39,9 +40,12 @@ export function formatDbmlx(source: string, indent = '  '): string {
     const closingCount = leadingClosingBraces(trimmed);
     depth = Math.max(0, depth - closingCount);
 
-    // Insert exactly one blank line before each new top-level block
+    // Insert blank line between top-level items only when at least one side is a block.
+    // This keeps consecutive !include / Ref lines together while still separating
+    // Table/Enum/TableGroup blocks from everything around them.
     const isTopLevel = depth === 0;
-    if (isTopLevel && out.length > 0 && !prevBlank && prevTopLevel) {
+    const isBlock = netOpeningBraces(trimmed) > 0;
+    if (isTopLevel && out.length > 0 && prevTopLevel && (isBlock || prevTopLevelWasBlock)) {
       out.push('');
     } else if (!isTopLevel && prevBlank && out.length > 0) {
       // Preserve at most one blank line inside a block
@@ -50,6 +54,7 @@ export function formatDbmlx(source: string, indent = '  '): string {
 
     out.push(indent.repeat(depth) + trimmed);
     prevBlank = false;
+    prevTopLevelWasBlock = isTopLevel && isBlock;
     prevTopLevel = depth === 0;
 
     // Count net opening braces to indent subsequent lines

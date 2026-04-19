@@ -1,46 +1,49 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/).
-
-## [0.1.0] — 2026-04-16
-
-Initial release.
+## [0.1.4] - 2026-04-19
 
 ### Added
+- **SQL import/export**: Convert `.dbmlx` schemas to MySQL, PostgreSQL, or SQL Server DDL and back via the command palette (`DBMLX: Export Schema to SQL`, `DBMLX: Import Schema from SQL`)
+- **SQL import sanitizer**: Automatically strips unsupported PostgreSQL constructs (`PARTITION BY`, `GENERATED ALWAYS AS IDENTITY`, `ATTACH PARTITION`, `SET`, `ALTER ROLE`, sequences, etc.) so real-world `pg_dump` files import cleanly
+- **Migration diff annotations**: `[add]`, `[drop]`, `[modify: name="old" type="old"]` column annotations with full LSP support (hover docs, completions, go-to-definition)
+- **DiagramView**: Named filtered views with per-view layout sidecar files (`schema.dbmlx.<viewName>.layout.json`)
+- **Multi-file `!include`**: Submodule files now open their own diagram independently
+- **LSP go-to-definition on `table.column`**: Jump to the exact column line in Ref declarations
+- **Table Groups panel**: Renamed from "Diagram Views"; permanent "No Group" entry with hide-all toggle and search auto-expand
+- **Cardinality toggle**: Show/hide 1-N labels on relation lines (default on)
+- **Table Groups boundary toggle**: Show/hide group boundary boxes (default on); replaces "Keep groups together"
+- **PK/FK only toggle**: Filter columns to primary and foreign keys only
 
-- Open Diagram command renders any `.dbml` file as an interactive diagram in a webview beside the editor.
-- Parser wrapper over `@dbml/core` (dbmlv2) with quoted-identifier normalization.
-- Auto-layout with `@dagrejs/dagre` for tables without saved positions; existing positions preserved on reparse.
-- Sidecar layout file (`<name>.dbml.layout.json`) with Git-friendly stable ordering, integer coordinates, atomic writes.
-- Persistence of per-table position, per-table color, per-table hidden flag, per-group collapse/hide/color, per-edge midpoint offset, viewport pan/zoom.
-- Grid-bucketed spatial index (512 × 512 px) with viewport culling; 3-level LOD (`rect`/`header`/`full`) selected by zoom.
-- Manhattan edge router, always horizontal (column-aligned), with port distribution to minimize overlap across multiple refs on the same side.
-- Cardinality markers: crow's-foot (many) and perpendicular bar (one), at both endpoints.
-- Draggable middle segment per edge with persisted `dx` offset.
-- Marquee selection (click-drag on empty viewport, `Shift` to extend, `Esc` to clear) and multi-table drag.
-- Double-click table header → reveals the `Table foo { ... }` declaration in the DBML editor.
-- Custom tooltip on hover for columns and tables with `Note`.
-- Gear button per table and per group opens a color picker with 20 presets + custom + reset.
-- `TableGroup` support: visible container (dashed box with labeled tab), collapsed (single box with aggregated edges), hidden.
-- "Diagram Views" panel: search, hide-all, collapse-all, per-group rows, per-table rows inside expanded groups.
-- Bottom actions panel with "PK/FK only" toggle (collapses columns to PK + FK only).
-- Zoom controls: `+` / `-` buttons, editable zoom percentage input, fit-to-content, reset.
-- Keyboard shortcuts registered with `when: activeWebviewPanelId == 'dddbml.diagram'`:
-  - `Ctrl+=` / `Ctrl+shift+=` — zoom in
-  - `Ctrl+-` — zoom out
-  - `Ctrl+0` — reset view
-  - `Ctrl+1` — fit to content
-- Hot-reload: FS watcher on both the DBML file and its layout sidecar; self-write suppression prevents echo loops.
-- Commands: `dddbml.openDiagram`, `dddbml.resetLayout`, `dddbml.pruneOrphans`, `dddbml.zoomIn`, `dddbml.zoomOut`, `dddbml.resetView`, `dddbml.fitToContent`.
-- Respects active VSCode color theme (light / dark / high-contrast).
-- Synthetic 5000-table fixture generator (`scripts/gen-huge-fixture.mjs`) and medium/tiny fixtures under `test/fixtures/`.
+### Improved
+- **Snowflake layout**: Size-aware elliptical rings — ring radii computed from actual table bounding boxes, preventing overlap; isolated tables placed relative to actual BFS bounding box
+- **Group container bounds**: Uses actual table height (accounting for `[modify]` double-height rows) so tables never overflow the group box
+- **Auto-arrange persistence**: Layout saved to `.layout.json` after selecting an algorithm
+- **Export edge color**: SVG/PNG export now uses the same blue as the live diagram instead of gray
+- **Formatter stability**: Consecutive `!include` and `Ref` lines no longer get blank lines inserted between them
 
-### Deferred to future releases
+### Fixed
+- All TypeScript errors resolved (including pre-existing `store.ts` type mismatches and `tableNode.tsx` style type error)
+- Auto-arrange algorithm picker no longer shows numeric badges on options
 
-- DBML `!include` / multi-file projects.
-- A*-based edge routing that avoids crossing tables.
-- Export to SQL, Prisma, PNG, SVG.
-- Minimap, go-to-table search, edge highlight on table hover.
-- Collaborative cursors.
+## [0.1.3] - 2026-04-18
+
+### Added
+- Full rename to **DBMLX** — language ID, file extension `.dbmlx`, commands, grammar, icon
+- Extension icon (SVG + PNG)
+- LSP: hover, go-to-definition, document symbols, completions, formatting, diagnostics
+- Column-level go-to-definition in Ref declarations
+- `!include` file path completion
+- Auto-arrange with four algorithms: Top-down, Left-right, Snowflake, Compact
+- Marquee multi-select; drag selected group
+- Edge mid-segment drag with persisted offset
+- Crow's-foot cardinality markers
+- SVG and PNG export with full fidelity (tables, edges, markers, group containers, diff colors)
+- LOD rendering (full / header / rect) with spatial index viewport culling
+
+## [0.1.0] - 2026-04-17
+
+### Added
+- Initial release — forked from [TWulfZ/dddbml](https://github.com/TWulfZ/dddbml)
+- Git-friendly sidecar layout JSON with stable key ordering
+- `TableGroup` collapse to summary node and hide
+- Viewport culling + LOD targeting 5000+ tables at 60fps

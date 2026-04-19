@@ -32,7 +32,7 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
   const selClass = selected ? ' is-selected' : '';
   const headerStyle = color
     ? { background: tint(color, 0.22), borderTopColor: color }
-    : {};
+    : undefined;
 
   if (lod === 'rect') {
     return (
@@ -186,17 +186,17 @@ function ColumnRow({ col, isFk, change }: { col: Column; isFk: boolean; change?:
     : '';
 
   if (change?.kind === 'modify') {
-    const afterName = change.afterName ?? col.name;
-    const afterType = change.afterType ?? col.type;
+    const fromName = change.fromName ?? col.name;
+    const fromType = change.fromType ?? col.type;
     return (
       <li class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}`} onMouseEnter={onEnter} onMouseLeave={onLeave}>
         <div class="ddd-col__before">
-          <span class="ddd-table__col-left"><span class="ddd-table__col-name">{col.name}</span></span>
-          <span class="ddd-table__col-right"><span class="ddd-table__col-type">{col.type}</span></span>
+          <span class="ddd-table__col-left"><span class="ddd-table__col-name">{fromName}</span></span>
+          <span class="ddd-table__col-right"><span class="ddd-table__col-type">{fromType}</span></span>
         </div>
         <div class="ddd-col__after">
-          <span class="ddd-table__col-left"><span class="ddd-table__col-name">{afterName}</span></span>
-          <span class="ddd-table__col-right"><span class="ddd-table__col-type">{afterType}</span></span>
+          <span class="ddd-table__col-left"><span class="ddd-table__col-name">{col.name}</span></span>
+          <span class="ddd-table__col-right"><span class="ddd-table__col-type">{col.type}</span></span>
         </div>
       </li>
     );

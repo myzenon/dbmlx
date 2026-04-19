@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import type { WorkspaceIndex } from './workspaceIndex';
-import type { Table } from '../shared/types';
+import type { QualifiedName, Table } from '../shared/types';
 import { DbmlxFormattingProvider } from './formatter';
 
 const INCLUDE_LINE_RE = /^(?:\/\/|!)include\s+"([^"]*)"/;
@@ -41,6 +41,21 @@ const KEYWORD_HOVER: Record<string, { title: string; body: string }> = {
   note: {
     title: 'note / Note',
     body: 'Attaches a human-readable description.\n\n```dbmlx\nNote: \'Table-level note\'\n// or in column settings:\nid int [note: \'Primary identifier\']\n```',
+  },
+};
+
+const DIFF_ANNOTATION_HOVER: Record<string, { title: string; body: string }> = {
+  add: {
+    title: 'add — New Column',
+    body: 'Marks this column as **added** in the current migration.\n\nThe column will be rendered with a green ➕ accent in the diagram.\n\n```dbmlx\ncreated_at timestamp [add]\nemail varchar(255) [add, not null]\n```',
+  },
+  drop: {
+    title: 'drop — Dropped Column',
+    body: 'Marks this column as **dropped** in the current migration.\n\nThe column will be rendered with a red 🗑 strikethrough accent in the diagram.\n\n```dbmlx\nlegacy_id int [drop]\nold_name varchar(100) [drop]\n```',
+  },
+  modify: {
+    title: 'modify — Modified Column',
+    body: 'Marks this column as **modified** in the current migration.\n\nWrite the column with its **new** name and type. Use `name=` and/or `type=` to record the **original** values before migration.\n\n```dbmlx\n// renamed + retyped: write the new state first\nuser_login text [modify: name="username", type="varchar(50)"]\n\n// type change only\nemail varchar(255) [modify: type="varchar(100)"]\n```\n\nRefs and indexes reference the new column name. The diagram renders the original (strikethrough) above and the new value below.',
   },
 };
 
@@ -151,7 +166,12 @@ class DbmlxHoverProvider implements vscode.HoverProvider {
       // Inside [...] → column or index settings
       if (/\[[^\]]*$/.test(linePrefix)) {
         // Distinguish index settings vs column settings by checking broader context
-        const insideIndexBlock = this.getContext(doc, pos).block === 'indexes';
+        const ctx = this.getContext(doc, pos);
+        const insideIndexBlock = ctx.block === 'indexes';
+        if (!insideIndexBlock) {
+          const diffInfo = DIFF_ANNOTATION_HOVER[word];
+          if (diffInfo) return this.keywordHover(diffInfo.title, diffInfo.body, wordRange);
+        }
         const settingMap = insideIndexBlock ? INDEX_SETTING_HOVER : SETTING_HOVER;
         const info = settingMap[word];
         if (info) return this.keywordHover(info.title, info.body, wordRange);
@@ -183,13 +203,21 @@ class DbmlxHoverProvider implements vscode.HoverProvider {
     if (table.note) md.appendMarkdown(`\n\n*${table.note}*`);
     md.appendMarkdown('\n\n| Column | Type | Constraints |\n|--------|------|-------------|\n');
     for (const col of table.columns) {
+      const change = table.columnChanges?.[col.name];
+      const diffBadge = change
+        ? change.kind === 'add' ? ' `+add`'
+        : change.kind === 'drop' ? ' `~drop`'
+        : ` \`~modify\``
+        : '';
       const constraints = [
         col.pk ? 'PK' : '',
         col.notNull ? 'NOT NULL' : '',
         col.unique ? 'UNIQUE' : '',
         col.increment ? 'AUTOINCREMENT' : '',
+        change?.kind === 'modify' && change.fromName ? `was \`${change.fromName}\`` : '',
+        change?.kind === 'modify' && change.fromType ? `was \`${change.fromType}\`` : '',
       ].filter(Boolean).join(', ');
-      md.appendMarkdown(`| \`${col.name}\` | \`${col.type}\` | ${constraints} |\n`);
+      md.appendMarkdown(`| \`${col.name}\`${diffBadge} | \`${col.type}\` | ${constraints} |\n`);
     }
     return md;
   }
@@ -264,13 +292,30 @@ class DbmlxDefinitionProvider implements vscode.DefinitionProvider {
     if (!wordRange) return;
     const word = doc.getText(wordRange);
 
-    const candidates: string[] = [word];
-    if (word.includes('.')) candidates.push(word.split('.')[0]!);
-
-    for (const c of candidates) {
-      const loc = this.index.getTableLocation(c) ?? this.index.getTableLocation(`public.${c}`);
-      if (loc) return new vscode.Location(loc.uri, new vscode.Position(loc.line, 0));
+    // "table.column" → jump to column definition line
+    if (word.includes('.')) {
+      const lastDot = word.lastIndexOf('.');
+      const tablePart = word.substring(0, lastDot);
+      const colPart = word.substring(lastDot + 1);
+      const tableQn = this.index.getTableLocation(tablePart)
+        ? tablePart as QualifiedName
+        : this.index.getTableLocation(`public.${tablePart}`)
+          ? `public.${tablePart}` as QualifiedName
+          : undefined;
+      if (tableQn && colPart) {
+        const colLoc = this.index.getColumnLocation(tableQn, colPart);
+        if (colLoc) return new vscode.Location(colLoc.uri, new vscode.Position(colLoc.line, 0));
+      }
+      // Fall back to table jump
+      const tableLoc = (tableQn && this.index.getTableLocation(tableQn))
+        ?? this.index.getTableLocation(tablePart as QualifiedName)
+        ?? this.index.getTableLocation(`public.${tablePart}` as QualifiedName);
+      if (tableLoc) return new vscode.Location(tableLoc.uri, new vscode.Position(tableLoc.line, 0));
     }
+
+    const loc = this.index.getTableLocation(word as QualifiedName)
+      ?? this.index.getTableLocation(`public.${word}` as QualifiedName);
+    if (loc) return new vscode.Location(loc.uri, new vscode.Position(loc.line, 0));
     return undefined;
   }
 }
@@ -296,7 +341,7 @@ const SQL_TYPES = [
   'serial', 'bigserial',
 ];
 
-const COLUMN_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind }> = [
+const COLUMN_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind; snippet?: string }> = [
   { label: 'pk', doc: 'Primary key — uniquely identifies each row.' },
   { label: 'primary key', doc: 'Primary key (verbose form).' },
   { label: 'not null', doc: 'Column cannot contain NULL values.' },
@@ -306,6 +351,9 @@ const COLUMN_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Complet
   { label: 'default: ', doc: 'Default value on INSERT.', kind: vscode.CompletionItemKind.Property },
   { label: 'note: ', doc: 'Column note/comment.', kind: vscode.CompletionItemKind.Property },
   { label: 'ref: ', doc: 'Inline foreign-key reference.', kind: vscode.CompletionItemKind.Reference },
+  { label: 'add', doc: 'Migration diff — column is being added in this migration.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'drop', doc: 'Migration diff — column is being dropped in this migration.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'modify: ', doc: 'Migration diff — column is being modified. Write the new column name/type on the line; use name="old_name" and type="old_type" to record the original values.', kind: vscode.CompletionItemKind.EnumMember, snippet: 'modify: ${1|name,type|}="$2"' },
 ];
 
 const INDEX_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind }> = [
@@ -457,9 +505,11 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
         ];
       }
       const settings = block === 'indexes' ? INDEX_SETTINGS : COLUMN_SETTINGS;
-      return settings.map(({ label, doc, kind }) => {
-        const item = new vscode.CompletionItem(label, kind ?? vscode.CompletionItemKind.Keyword);
-        item.documentation = doc;
+      return settings.map((s) => {
+        const item = new vscode.CompletionItem(s.label, s.kind ?? vscode.CompletionItemKind.Keyword);
+        item.documentation = s.doc;
+        const snip = (s as { snippet?: string }).snippet;
+        if (snip) item.insertText = new vscode.SnippetString(snip);
         return item;
       });
     }

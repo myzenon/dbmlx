@@ -50,6 +50,8 @@ export class WorkspaceIndex implements vscode.Disposable {
   private readonly roots = new Map<string, StitchedRoot>();
   /** Table → source file + line (from regex scan, not @dbml/core). */
   private readonly tableLocations = new Map<QualifiedName, SymbolLocation>();
+  /** "schema.table\0col" → source file + line for column definitions. */
+  private readonly columnLocations = new Map<string, SymbolLocation>();
 
   private readonly _onChange = new vscode.EventEmitter<vscode.Uri>();
   public readonly onChange: vscode.Event<vscode.Uri> = this._onChange.event;
@@ -100,8 +102,20 @@ export class WorkspaceIndex implements vscode.Disposable {
    * This is what DiagramPanel uses — all tables from all included files visible.
    */
   public getResolvedSchema(rootUri: vscode.Uri): ResolvedSchema {
-    const root = this.roots.get(rootUri.toString());
     const errors = new Map<string, { uri: vscode.Uri; error: ParseError }>();
+
+    let root = this.roots.get(rootUri.toString());
+
+    // Module file (included by another root) — parse it standalone on demand
+    if (!root && this.raw.has(rootUri.toString())) {
+      const stitched = stitchContent(rootUri, this.raw, new Set());
+      const result = parseDbmlx(stitched.content);
+      if (result.error) {
+        errors.set(rootUri.toString(), { uri: rootUri, error: result.error });
+        return { schema: { tables: [], refs: [], groups: [], views: [] }, errors };
+      }
+      return { schema: result.schema ?? { tables: [], refs: [], groups: [], views: [] }, errors };
+    }
 
     if (!root) {
       return { schema: { tables: [], refs: [], groups: [], views: [] }, errors };
@@ -133,6 +147,15 @@ export class WorkspaceIndex implements vscode.Disposable {
 
   public getTableLocation(name: QualifiedName): SymbolLocation | undefined {
     return this.tableLocations.get(name);
+  }
+
+  public getColumnLocation(table: QualifiedName, col: string): SymbolLocation | undefined {
+    return this.columnLocations.get(`${table}\0${col}`);
+  }
+
+  /** Returns the fully-stitched (includes resolved) DBML source for a root file, or null if not found. */
+  public getStitchedContent(uri: vscode.Uri): string | null {
+    return this.roots.get(uri.toString())?.content ?? null;
   }
 
   public getAllTableNames(): QualifiedName[] {
@@ -212,6 +235,34 @@ export class WorkspaceIndex implements vscode.Disposable {
     return false;
   }
 
+  /**
+   * If uri is a module file (!include'd by another), returns the URI of the
+   * root file that (transitively) includes it. Returns the uri itself if it
+   * is already a root. Useful for opening the full diagram from a module file.
+   */
+  public resolveRootUri(uri: vscode.Uri): vscode.Uri {
+    const fp = uri.fsPath;
+    // Already a root
+    if (this.roots.has(uri.toString())) return uri;
+    // BFS: find which root transitively includes this file
+    for (const root of this.roots.values()) {
+      const visited = new Set<string>();
+      const queue: vscode.Uri[] = [root.uri];
+      while (queue.length > 0) {
+        const cur = queue.shift()!;
+        if (visited.has(cur.toString())) continue;
+        visited.add(cur.toString());
+        const raw = this.raw.get(cur.toString());
+        if (!raw) continue;
+        for (const inc of raw.includes) {
+          if (inc.fsPath === fp) return root.uri;
+          queue.push(inc);
+        }
+      }
+    }
+    return uri; // not found, treat as root
+  }
+
   // ── Scanning & stitching ─────────────────────────────────────────────────
 
   /** Phase 1: read file, extract includes — no @dbml/core yet. */
@@ -257,21 +308,55 @@ export class WorkspaceIndex implements vscode.Disposable {
     }
   }
 
-  /** Phase 3: regex-scan each file individually for table definition lines. */
+  /** Phase 3: regex-scan each file individually for table + column definition lines. */
   private rebuildLocationTable(): void {
     this.tableLocations.clear();
+    this.columnLocations.clear();
+
+    const COL_RE = /^\s{1,}(\w+)\s+\S/;
+    const SKIP_RE = /^\s*(indexes|note|Note)\s*[:{]/;
+
     for (const f of this.raw.values()) {
       const lines = f.source.split(/\r?\n/);
+      let currentQn: QualifiedName | null = null;
+      let depth = 0;
+      let tableBodyDepth = -1;
+
       for (let i = 0; i < lines.length; i++) {
-        const m = TABLE_DEF_RE.exec(lines[i] ?? '');
-        if (!m) continue;
-        const ident = m[1]!.replace(/"/g, '');
-        const parts = ident.split('.');
-        const schema = parts.length > 1 ? parts[0]! : 'public';
-        const table = parts.length > 1 ? parts.slice(1).join('.') : ident;
-        const qn: QualifiedName = `${schema}.${table}`;
-        if (!this.tableLocations.has(qn)) {
-          this.tableLocations.set(qn, { uri: f.uri, line: i });
+        const line = lines[i] ?? '';
+
+        const tableMatch = TABLE_DEF_RE.exec(line);
+        if (tableMatch && depth === 0) {
+          const ident = tableMatch[1]!.replace(/"/g, '');
+          const parts = ident.split('.');
+          const schema = parts.length > 1 ? parts[0]! : 'public';
+          const table = parts.length > 1 ? parts.slice(1).join('.') : ident;
+          const qn: QualifiedName = `${schema}.${table}`;
+          if (!this.tableLocations.has(qn)) {
+            this.tableLocations.set(qn, { uri: f.uri, line: i });
+          }
+          currentQn = qn;
+          tableBodyDepth = depth + (line.includes('{') ? 1 : 0);
+        }
+
+        const opens = (line.match(/\{/g) ?? []).length;
+        const closes = (line.match(/\}/g) ?? []).length;
+        depth += opens - closes;
+
+        if (currentQn && depth === tableBodyDepth && !tableMatch && !SKIP_RE.test(line)) {
+          const colMatch = COL_RE.exec(line);
+          if (colMatch) {
+            const col = colMatch[1]!;
+            const key = `${currentQn}\0${col}`;
+            if (!this.columnLocations.has(key)) {
+              this.columnLocations.set(key, { uri: f.uri, line: i });
+            }
+          }
+        }
+
+        if (currentQn && depth < tableBodyDepth) {
+          currentQn = null;
+          tableBodyDepth = -1;
         }
       }
     }

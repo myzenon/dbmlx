@@ -25,6 +25,7 @@ const GROUP_PREFIX = '__group__:';
 
 export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox }: EdgeLayerProps) {
   const edgeOffsets = useAppStore((s) => s.edgeOffsets);
+  const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
   const groupByName = new Map<string, GroupSize>();
   if (groupSizes) for (const g of groupSizes) groupByName.set(g.name, g);
@@ -109,8 +110,8 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
               markerStart={startMarker}
               markerEnd={endMarker}
             />
-            <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text>
-            <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text>
+            {showCardinalityLabels ? <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text> : null}
+            {showCardinalityLabels ? <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text> : null}
             {r.midSeg ? (
               <line
                 class="ddd-edge-handle"

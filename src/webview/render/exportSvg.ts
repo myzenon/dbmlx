@@ -172,7 +172,7 @@ export function generateSvg(state: AppState): string {
   const tblBorder = dark ? '#3c3c3c' : '#d4d4d4';
   const hdrFill   = dark ? '#2d2d2d' : '#e8e8e8';
   const rowLine   = dark ? '#2c2c2c' : '#ebebeb';
-  const edgeLine  = dark ? '#606060' : '#9b9b9b';
+  const edgeLine  = dark ? '#4a9eff' : '#1a6fd4';
   const pkColor   = dark ? '#4ec9b0' : '#007f6f';
 
   const L: string[] = [];
@@ -252,15 +252,15 @@ export function generateSvg(state: AppState): string {
       if (ci > 0) L.push(`  <line x1="${x}" y1="${ry}" x2="${x + w}" y2="${ry}" stroke="${rowLine}" stroke-width="1"/>`);
 
       if (change?.kind === 'modify') {
-        const afterName = change.afterName ?? col.name;
-        const afterType = change.afterType ?? col.type;
+        const fromName = change.fromName ?? col.name;
+        const fromType = change.fromType ?? col.type;
         L.push(`  <rect x="${x}" y="${ry}" width="${w}" height="${TABLE_ROW_H * 2}" fill="${withAlpha(migModify, 0.08)}"/>`);
         L.push(`  <rect x="${x}" y="${ry}" width="2" height="${TABLE_ROW_H * 2}" fill="${migModify}"/>`);
-        L.push(`  <text x="${x + 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fg}" opacity="0.4" text-decoration="line-through">${esc(col.name)}</text>`);
-        L.push(`  <text x="${x + w - 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" opacity="0.4" text-anchor="end" text-decoration="line-through">${esc(col.type)}</text>`);
+        L.push(`  <text x="${x + 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fg}" opacity="0.4" text-decoration="line-through">${esc(fromName)}</text>`);
+        L.push(`  <text x="${x + w - 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" opacity="0.4" text-anchor="end" text-decoration="line-through">${esc(fromType)}</text>`);
         L.push(`  <line x1="${x + 6}" y1="${ry + TABLE_ROW_H}" x2="${x + w}" y2="${ry + TABLE_ROW_H}" stroke="${withAlpha(migModify, 0.25)}" stroke-width="1"/>`);
-        L.push(`  <text x="${x + 8}" y="${ry + TABLE_ROW_H + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" font-weight="600" fill="${migModify}">${esc(afterName)}</text>`);
-        L.push(`  <text x="${x + w - 8}" y="${ry + TABLE_ROW_H + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${migModify}" opacity="0.85" text-anchor="end">${esc(afterType)}</text>`);
+        L.push(`  <text x="${x + 8}" y="${ry + TABLE_ROW_H + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" font-weight="600" fill="${migModify}">${esc(col.name)}</text>`);
+        L.push(`  <text x="${x + w - 8}" y="${ry + TABLE_ROW_H + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${migModify}" opacity="0.85" text-anchor="end">${esc(col.type)}</text>`);
       } else if (change?.kind === 'drop') {
         L.push(`  <rect x="${x}" y="${ry}" width="${w}" height="${TABLE_ROW_H}" fill="${withAlpha(migDrop, 0.10)}"/>`);
         L.push(`  <rect x="${x}" y="${ry}" width="2" height="${TABLE_ROW_H}" fill="${migDrop}"/>`);

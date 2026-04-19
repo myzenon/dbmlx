@@ -18,7 +18,7 @@ export interface AppState {
   hiddenTables: Set<QualifiedName>;
   tableColors: Map<QualifiedName, string>;
   edgeOffsets: Map<string, EdgeLayout>;
-  groups: Record<string, { collapsed: boolean; hidden: boolean; color?: string }>;
+  groups: Record<string, GroupLayout>;
   viewport: ViewportLayout;
   theme: 'light' | 'dark';
   ready: boolean;
@@ -28,8 +28,10 @@ export interface AppState {
   showOnlyPkFk: boolean;
   /** Ephemeral: algorithm to use next time auto-layout runs. Not persisted. */
   layoutAlgorithm: LayoutAlgorithm;
-  /** Ephemeral: keep tables from the same group clustered together. Not persisted. */
-  groupAwareLayout: boolean;
+  /** Ephemeral: show/hide group boundary boxes and use group-aware layout. Not persisted. */
+  showGroupBoundary: boolean;
+  /** Ephemeral: show/hide 1-N cardinality labels on relation lines. Not persisted. */
+  showCardinalityLabels: boolean;
   /** Active DiagramView name, or null = show all tables. Ephemeral, not persisted. */
   activeView: string | null;
 }
@@ -50,7 +52,8 @@ export interface AppActions {
   setTooltip(t: TooltipState | null): void;
   toggleShowOnlyPkFk(): void;
   setLayoutAlgorithm(algo: LayoutAlgorithm): void;
-  setGroupAwareLayout(v: boolean): void;
+  setShowGroupBoundary(v: boolean): void;
+  setShowCardinalityLabels(v: boolean): void;
   resetPositions(): void;
   setActiveView(name: string | null): void;
 }
@@ -70,7 +73,8 @@ const initial: AppState = {
   tooltip: null,
   showOnlyPkFk: false,
   layoutAlgorithm: 'top-down' as LayoutAlgorithm,
-  groupAwareLayout: false,
+  showGroupBoundary: true,
+  showCardinalityLabels: true,
   activeView: null,
 };
 
@@ -164,8 +168,11 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
   setLayoutAlgorithm(algo) {
     set({ layoutAlgorithm: algo });
   },
-  setGroupAwareLayout(v) {
-    set({ groupAwareLayout: v });
+  setShowGroupBoundary(v: boolean) {
+    set({ showGroupBoundary: v });
+  },
+  setShowCardinalityLabels(v: boolean) {
+    set({ showCardinalityLabels: v });
   },
   resetPositions() {
     set({ positions: new Map() });
@@ -178,7 +185,6 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
 export function useAppStore<T>(selector: (state: AppState & AppActions) => T): T {
   return useSyncExternalStore(
     (listener) => store.subscribe(() => listener()),
-    () => selector(store.getState()),
     () => selector(store.getState()),
   );
 }

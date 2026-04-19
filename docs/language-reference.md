@@ -163,8 +163,10 @@ Ref: users.id < invoices.user_id
 
 - Includes are resolved before parsing — the stitched source is passed to the parser as a unit.
 - Circular includes are not detected; avoid them.
+- Go-to-definition on a `table.column` reference (e.g. in a `Ref:` line) jumps to the **column definition line** inside the table, not just the table header.
 - Go-to-definition on an `!include` path opens the included file.
 - File completion triggers automatically after typing `!include "`.
+- Opening a module file with **DBMLX: Open Diagram** automatically redirects to the root file's diagram.
 
 ---
 
@@ -200,35 +202,61 @@ DiagramView everything {
 
 - Multiple sections in one view are **unioned** — a table is shown if it matches any section.
 - A view with no sections (or `*` wildcard) shows all tables.
-- Views are selected from the **Views** panel in the diagram sidebar.
+- Views are selected from the diagram view switcher in the toolbar.
+- Each view has its own layout sidecar file (see §9).
 - Switching views loads a separate layout file automatically.
 
 ---
 
 ## 8. Migration diff annotations
 
-Annotate columns to visualize a schema migration as a before/after diff in the diagram. The diagram renders `[add]` columns with a green tint and `+` prefix, `[drop]` columns with a red strikethrough, and `[modify:]` columns as a two-row before → after display.
+Annotate columns to visualize a schema migration as a before/after diff in the diagram.
+
+### Key principle
+
+Write the column in its **new (post-migration) state** — the name and type as they will exist after the migration. Use the `[modify:]` annotation to record what the column was *before*.
+
+This means `Ref` and `indexes` reference the **new** column name, which is correct for the post-migration schema.
 
 ### Syntax
 
 ```dbmlx
 Table orders {
-  id          int           [pk]
-  status      varchar(50)
-  amount      decimal(10,2) [add]               // new column being added
-  total       decimal       [drop]              // column being removed
-  customer    varchar(100)  [modify: name="customer_id" type="int"]  // rename + retype
-  description text          [not null] [drop]   // [drop] combines with other settings
+  id           int           [pk]
+  status       varchar(50)
+
+  amount       decimal(10,2) [add]
+  // ↑ new column being added — write it as it will exist after migration
+
+  total        decimal       [drop]
+  // ↑ column being removed — write it as it exists now (before migration)
+
+  customer_id  int           [modify: name="customer", type="varchar(100)"]
+  // ↑ renamed + retyped: write the NEW name and type on the line,
+  //   record the original name/type inside [modify:]
+
+  email        varchar(255)  [modify: type="varchar(100)"]
+  // ↑ type change only — name= omitted because name is unchanged
+
+  description  text          [not null, drop]
+  // ↑ [drop] combines with other standard settings
 }
+
+// Refs use the new column name
+Ref: orders.customer_id > customers.id
 ```
 
 ### Rules
 
-- `[add]` — column exists in the *after* schema but not the *before*. Rendered in green.
-- `[drop]` — column exists in the *before* schema but not the *after*. Rendered in red with strikethrough. The column is still parsed normally by `@dbml/core` (the annotation is stripped before parsing).
-- `[modify: name="new_name" type="new_type"]` — column is being renamed and/or retyped. Both `name=` and `type=` are optional; omit whichever is not changing. Rendered as two rows: before (muted, strikethrough) → after (amber).
-- Annotations can be combined with standard settings: `[not null] [add]`, `[pk] [drop]`, etc.
-- `[add]` and `[drop]` are stripped before passing to the underlying DBML parser, so they never cause parse errors.
+| Annotation | Meaning | Visual |
+|---|---|---|
+| `[add]` | Column being added. Does not exist before migration. | Green accent |
+| `[drop]` | Column being removed. Will not exist after migration. | Red strikethrough |
+| `[modify: name="old" type="old"]` | Column renamed and/or retyped. Write new state on the line; `name=` and `type=` record original values. Both are optional. | Two-row display: original (muted strikethrough) → new (amber) |
+
+- Annotations are stripped before passing to the underlying DBML parser — they never cause parse errors.
+- `[add]` and `[drop]` can be combined with standard column settings: `[not null, add]`, `[pk, drop]`.
+- Hover over `[add]`, `[drop]`, or `[modify:]` in the editor for inline documentation.
 
 ---
 

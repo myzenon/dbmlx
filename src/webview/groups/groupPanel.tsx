@@ -17,12 +17,18 @@ import {
 
 export function GroupPanel() {
   const groups = useAppStore((s) => s.schema.groups);
+  const allTables = useAppStore((s) => s.schema.tables);
   const groupState = useAppStore((s) => s.groups);
   const hiddenTables = useAppStore((s) => s.hiddenTables);
   const [open, setOpen] = useState(true);
   const [query, setQuery] = useState('');
 
-  if (groups.length === 0) return null;
+  const ungroupedTables = useMemo(
+    () => allTables.filter((t) => t.groupName === null).map((t) => t.name),
+    [allTables],
+  );
+
+  if (groups.length === 0 && ungroupedTables.length === 0) return null;
 
   const lcQuery = query.trim().toLowerCase();
   const filtered = useMemo(() => {
@@ -32,6 +38,11 @@ export function GroupPanel() {
       return g.tables.some((t) => t.toLowerCase().includes(lcQuery));
     });
   }, [groups, lcQuery]);
+
+  const filteredUngrouped = useMemo(() => {
+    if (!lcQuery) return ungroupedTables;
+    return ungroupedTables.filter((t) => t.toLowerCase().includes(lcQuery));
+  }, [ungroupedTables, lcQuery]);
 
   const anyVisible = groups.some((g) => !(groupState[g.name]?.hidden));
   const anyExpanded = groups.some((g) => !(groupState[g.name]?.collapsed));
@@ -53,9 +64,9 @@ export function GroupPanel() {
   if (!open) {
     return (
       <div class="ddd-group-panel is-closed">
-        <button class="ddd-group-panel__handle" onClick={() => setOpen(true)} title="Open Diagram Views">
+        <button class="ddd-group-panel__handle" onClick={() => setOpen(true)} title="Open Table Groups">
           <IconChevronRight size={12} />
-          <span>Views</span>
+          <span>Groups</span>
         </button>
       </div>
     );
@@ -64,7 +75,7 @@ export function GroupPanel() {
   return (
     <div class="ddd-group-panel is-open">
       <div class="ddd-group-panel__head">
-        <span class="ddd-group-panel__title">Diagram Views</span>
+        <span class="ddd-group-panel__title">Table Groups</span>
         <div class="ddd-group-panel__actions">
           <button class="ddd-icon-btn" onClick={toggleAllHidden} title={anyVisible ? 'Hide all' : 'Show all'}>
             {anyVisible ? <IconEye size={13} /> : <IconEyeClosed size={13} />}
@@ -88,7 +99,7 @@ export function GroupPanel() {
         />
       </label>
       <ul class="ddd-group-list">
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && filteredUngrouped.length === 0 ? (
           <li class="ddd-group-empty">No matches for "{query}"</li>
         ) : null}
         {filtered.map((g) => (
@@ -101,8 +112,51 @@ export function GroupPanel() {
             filter={lcQuery}
           />
         ))}
+        {filteredUngrouped.length > 0 ? (
+          <NoGroupRow tables={filteredUngrouped} hiddenTables={hiddenTables} initialExpanded={lcQuery.length > 0} filter={lcQuery} />
+        ) : null}
       </ul>
     </div>
+  );
+}
+
+function NoGroupRow({ tables, hiddenTables, initialExpanded, filter }: { tables: string[]; hiddenTables: Set<string>; initialExpanded: boolean; filter: string }) {
+  const [userExpanded, setUserExpanded] = useState(initialExpanded);
+  const expanded = filter.length > 0 ? true : userExpanded;
+
+  const anyVisible = tables.some((t) => !hiddenTables.has(t));
+  const toggleAllHidden = () => {
+    for (const t of tables) store.getState().setTableHidden(t, anyVisible);
+    schedulePersist();
+  };
+
+  return (
+    <>
+      <li class="ddd-group-row">
+        <button
+          class="ddd-group-chevron"
+          onClick={() => setUserExpanded(!userExpanded)}
+          title={expanded ? 'Collapse list' : 'Expand table list'}
+        >{expanded ? <IconChevronDown size={10} /> : <IconChevronRight size={10} />}</button>
+        <span class="ddd-group-swatch" style={{ background: 'var(--vscode-badge-background, #888)' }} />
+        <span class="ddd-group-name ddd-group-name--ungrouped">No Group</span>
+        <span class="ddd-group-count">{tables.length}</span>
+        <button
+          class={`ddd-icon-btn ${anyVisible ? '' : 'is-off'}`}
+          onClick={toggleAllHidden}
+          title={anyVisible ? 'Hide all ungrouped' : 'Show all ungrouped'}
+        >{anyVisible ? <IconEye size={12} /> : <IconEyeClosed size={12} />}</button>
+      </li>
+      {expanded ? (
+        <li class="ddd-group-children">
+          <ul class="ddd-table-list">
+            {tables.map((name) => (
+              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} />
+            ))}
+          </ul>
+        </li>
+      ) : null}
+    </>
   );
 }
 

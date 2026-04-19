@@ -17,6 +17,13 @@ import type {
  * Input: DBML source string.
  * Output: internal Schema (plain-data, postMessage-safe) or ParseError.
  */
+/** Strip dbmlx-only syntax (DiagramView blocks, migration annotations) leaving clean DBML for @dbml/core. */
+export function stripDbmlxExtensions(source: string): string {
+  const { stripped: noViews } = extractDiagramViews(source);
+  const { stripped } = extractMigrationChanges(noViews);
+  return stripped;
+}
+
 export function parseDbmlx(source: string): { schema: Schema; error: null } | { schema: null; error: ParseError } {
   const { stripped: noViews, views } = extractDiagramViews(source);
   const { stripped, changes: migrationChanges } = extractMigrationChanges(noViews);
@@ -114,9 +121,9 @@ function extractMigrationChanges(source: string): {
         const modifyMatch = MODIFY_RE.exec(line);
         if (modifyMatch) {
           const body = modifyMatch[1]!;
-          const afterName = /\bname\s*=\s*"([^"]*)"/.exec(body)?.[1];
-          const afterType = /\btype\s*=\s*"([^"]*)"/.exec(body)?.[1];
-          tableChanges.set(colName, { kind: 'modify', afterName, afterType });
+          const fromName = /\bname\s*=\s*"([^"]*)"/.exec(body)?.[1];
+          const fromType = /\btype\s*=\s*"([^"]*)"/.exec(body)?.[1];
+          tableChanges.set(colName, { kind: 'modify', fromName, fromType });
           processedLine = line.replace(/\s*\[modify:\s*[^\]]*\]/i, '').trimEnd();
           outLines.push(processedLine);
           continue;

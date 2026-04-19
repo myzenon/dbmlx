@@ -7,6 +7,8 @@ import { generateSvg, svgToPngDataUrl } from './exportSvg';
 export function ActionsPanel() {
   const [open, setOpen] = useState(false);
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
+  const showGroupBoundary = useAppStore((s) => s.showGroupBoundary);
+  const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
   return (
     <div class={`ddd-actions-panel ${open ? 'is-open' : 'is-closed'}`}>
@@ -26,6 +28,22 @@ export function ActionsPanel() {
           >
             <IconFilter size={12} />
             <span>{showOnlyPkFk ? 'Show all columns' : 'PK/FK only'}</span>
+          </button>
+          <button
+            class={`ddd-actions-btn ${showGroupBoundary ? 'is-active' : ''}`}
+            onClick={() => store.getState().setShowGroupBoundary(!showGroupBoundary)}
+            title="Toggle table group boundary display and group-aware layout"
+          >
+            <IconFilter size={12} />
+            <span>Table Groups</span>
+          </button>
+          <button
+            class={`ddd-actions-btn ${showCardinalityLabels ? 'is-active' : ''}`}
+            onClick={() => store.getState().setShowCardinalityLabels(!showCardinalityLabels)}
+            title="Toggle 1-N cardinality labels on relation lines"
+          >
+            <IconFilter size={12} />
+            <span>Cardinality</span>
           </button>
           <button
             class="ddd-actions-btn"

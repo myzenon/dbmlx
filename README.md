@@ -4,7 +4,6 @@
 
 Your schema stays in plain text. The extension reads it, renders it, and persists your layout alongside it — reviewable in Git, portable across teams.
 
-> **Forked from** [TWulfZ/dddbml](https://github.com/TWulfZ/dddbml) — extended with LSP intelligence, migration diff visualization, custom syntax, and a standalone export engine.
 > Uses [`@dbml/core`](https://github.com/holistics/dbml) (Apache-2.0) as the underlying parser.
 
 → **[Full language reference](docs/language-reference.md)** — complete syntax, all constructs, migration diffs, DiagramView, layout format.
@@ -16,10 +15,12 @@ Your schema stays in plain text. The extension reads it, renders it, and persist
 From the VSCode Marketplace *(coming soon)*, or from a VSIX:
 
 ```bash
-code --install-extension dbmlx-0.1.2.vsix
+code --install-extension dbmlx-0.1.3.vsix
 ```
 
 Open any `.dbmlx` file, then run **`DBMLX: Open Diagram`** from the command palette, or click the icon in the editor title bar.
+
+> Opening a module file (one referenced by `!include`) automatically opens the root file's diagram.
 
 ---
 
@@ -54,17 +55,21 @@ DiagramView billing_overview {
 
 ### Migration diff annotations
 
-Annotate columns with `[add]`, `[drop]`, or `[modify: name="x" type="y"]` to visualize schema changes as a before/after diff directly in the diagram.
+Annotate columns to visualize a schema migration as a before/after diff directly in the diagram. Write the column in its **new** (post-migration) state, and record the original values in the annotation.
 
 ```dbmlx
 Table orders {
-  id         int    [pk]
-  status     varchar(50)
-  amount     decimal(10,2) [add]
-  total      decimal       [drop]
-  customer   varchar(100)  [modify: name="customer_id" type="int"]
+  id           int           [pk]
+  status       varchar(50)
+  amount       decimal(10,2) [add]                                    // new column
+  total        decimal       [drop]                                   // removed column
+  customer_id  int           [modify: name="customer", type="varchar(100)"]  // renamed + retyped
 }
 ```
+
+- `[add]` — rendered with a green accent
+- `[drop]` — rendered with a red strikethrough
+- `[modify: name="old_name" type="old_type"]` — two-row display: original (strikethrough) → new (amber). Refs and indexes reference the new column name.
 
 ---
 
@@ -81,14 +86,17 @@ Table orders {
 
 ### DDD-aware bounded contexts
 
-- Every `TableGroup` becomes a collapsible bounded context panel.
+The **Table Groups** panel (top-left of the diagram) lists all `TableGroup`s plus a **No Group** entry for ungrouped tables.
+
 - **Collapse** a group to a single summary node — edges route to/from it.
 - **Hide** a group to remove it and all its edges from the diagram.
+- **Hide all ungrouped** tables via the No Group row's eye button.
 - Assign custom colors per group or per table via the gear menu.
+- Search by group or table name — matching groups expand automatically.
 
 ### Diagram Views
 
-Switch between named views from the sidebar panel. Each view filters tables, groups, and schemas independently. Great for presenting subsystems of large schemas without editing the source.
+Switch between named views from the toolbar. Each view filters tables, groups, and schemas independently and has its own layout file.
 
 ### Layout persistence
 
@@ -117,25 +125,49 @@ Full language server features for `.dbmlx` files:
 
 | Feature | Details |
 |---|---|
-| **Hover** | Table schema, column types/constraints; keyword docs for every construct |
-| **Go-to-definition** | Jump to table definition; `!include` → open included file |
+| **Hover** | Table schema with column diff state; keyword docs for every construct including `[add]`, `[drop]`, `[modify:]` |
+| **Go-to-definition** | Jump to table or **column** definition; `!include` → open included file |
 | **Document symbols** | Outline panel lists all tables and columns |
-| **Completions** | Table names, column names, SQL types, settings, ref operators, `!include` file paths |
-| **Formatting** | Auto-format on save — consistent indentation and spacing |
+| **Completions** | Table names, column names, SQL types, settings, ref operators, diff annotations, `!include` file paths |
+| **Formatting** | Auto-format on save — consistent indentation, idempotent |
 | **Diagnostics** | Parse errors shown as squiggles with line/column |
+
+### Diagram toolbar
+
+The actions panel (bottom of the diagram) provides view toggles:
+
+| Toggle | Default | Effect |
+|---|---|---|
+| **PK/FK only** | Off | Show only primary key and foreign key columns |
+| **Table Groups** | On | Show group boundary boxes; auto-arrange respects group clusters |
+| **Cardinality** | On | Show 1/N labels on relation lines |
+
+### Auto-arrange
+
+Four layout algorithms available from the arrange button (⟳):
+
+| Algorithm | Best for |
+|---|---|
+| **Top-down** | Most diagrams — relationships flow top to bottom |
+| **Left-right** | Long lineage chains, ETL pipelines |
+| **Snowflake** | Dense graphs, data warehouses |
+| **Compact** | Schemas with few relationships |
+
+When **Table Groups** is enabled, auto-arrange clusters tables from the same group together.
 
 ### Export
 
-- **SVG**: full fidelity — tables, edges, markers, cardinality labels, group containers, migration diff colors.
-- **PNG**: rasterized from SVG via canvas.
+- **SVG / PNG**: full fidelity — tables, edges, markers, cardinality labels, group containers, migration diff colors.
+- **SQL**: export the schema to MySQL, PostgreSQL, or SQL Server DDL.
+- **Import from SQL**: convert MySQL, PostgreSQL, or SQL Server DDL to `.dbmlx`.
 
-Run **`DBMLX: Export Diagram as SVG`** from the command palette, or use the export buttons in the diagram toolbar.
+Run the relevant command from the command palette or use the export buttons in the diagram toolbar.
 
 ---
 
 ## Commands
 
-| Command | Default Shortcut |
+| Command | Shortcut |
 |---|---|
 | DBMLX: Open Diagram | — |
 | DBMLX: Auto Re-arrange Diagram | — |
@@ -144,6 +176,8 @@ Run **`DBMLX: Export Diagram as SVG`** from the command palette, or use the expo
 | DBMLX: Zoom In | `Ctrl+=` / `Cmd+=` |
 | DBMLX: Zoom Out | `Ctrl+-` / `Cmd+-` |
 | DBMLX: Export Diagram as SVG | — |
+| DBMLX: Export Schema to SQL | — |
+| DBMLX: Import Schema from SQL | — |
 
 ---
 
@@ -155,6 +189,7 @@ The sidecar `schema.dbmlx.layout.json` is intentionally human-readable and Git-f
 - **Integers only** for coordinates — no floating-point drift.
 - **Defaults omitted** — `collapsed: false` and `hidden: false` are not written.
 - **Atomic writes** — tmp file → rename, no partial writes.
+- **Per-view files** — named views get their own `schema.dbmlx.<viewName>.layout.json`.
 
 Commit this file alongside your schema. Your team sees the same diagram layout on checkout.
 
@@ -166,3 +201,4 @@ Commit this file alongside your schema. Your team sees the same diagram layout o
 - DBML language and `@dbml/core` parser by [Holistics](https://github.com/holistics/dbml) (Apache-2.0).
 - Layout engine: [`@dagrejs/dagre`](https://github.com/dagrejs/dagre).
 - Rendered with [Preact](https://preactjs.com/) + [Zustand](https://zustand-demo.pmnd.rs/).
+- LSP intelligence, migration diff visualization, SQL import/export, diagram views, and all extended features built with [Claude Code](https://claude.ai/code) by Anthropic.

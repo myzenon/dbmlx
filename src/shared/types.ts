@@ -10,10 +10,10 @@ export type ColumnChangeKind = 'add' | 'drop' | 'modify';
 
 export interface ColumnChange {
   kind: ColumnChangeKind;
-  /** For 'modify': new column name (undefined = name unchanged) */
-  afterName?: string;
-  /** For 'modify': new column type (undefined = type unchanged) */
-  afterType?: string;
+  /** For 'modify': original column name before migration (undefined = name unchanged) */
+  fromName?: string;
+  /** For 'modify': original column type before migration (undefined = type unchanged) */
+  fromType?: string;
 }
 
 export interface Column {

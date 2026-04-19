@@ -1,19 +1,37 @@
+# Dev tooling
 .vscode/**
 .vscode-test/**
 .claude/**
+.windsurf/**
+.github/**
+
+# Source
 src/**
 test/**
 specs/**
 scripts/**
-node_modules/**
+
+# Config / lock files
 .gitignore
-.editorconfig
 .gitattributes
+.editorconfig
 tsconfig*.json
 vite.config.ts
 pnpm-lock.yaml
-docs/screenshots/README.md
 **/.eslintrc.json
+
+# AI / developer docs (not for end users)
+CLAUDE.md
+llms.txt
+docs/language-reference.md
+docs/dddbml-logo.svg
+docs/screenshots/**
+
+# Build artefacts to exclude
+node_modules/**
 **/*.map
 **/*.ts
+*.vsix
+
+# Keep compiled output
 !dist/**/*.js

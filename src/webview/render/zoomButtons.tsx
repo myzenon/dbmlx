@@ -4,6 +4,7 @@ import { store, useAppStore } from '../state/store';
 import { fitToContent, zoomAtCenter } from './viewport';
 import { IconAutoLayout, IconFitScreen, IconLayoutCompact, IconLayoutLR, IconLayoutSnowflake, IconMinus, IconPlus } from '../icons';
 import type { LayoutAlgorithm } from '../layout/autoLayout';
+import { schedulePersist } from '../drag/dragController';
 
 const ALGORITHMS: Array<{ id: LayoutAlgorithm; label: string; desc: string; icon: () => JSX.Element }> = [
   { id: 'top-down', label: 'Top-down', desc: 'Arrange tables from top to bottom based on relationship direction. Ideal for most diagrams.', icon: () => <IconAutoLayout size={16} /> },
@@ -14,7 +15,6 @@ const ALGORITHMS: Array<{ id: LayoutAlgorithm; label: string; desc: string; icon
 
 function ArrangePicker({ onClose }: { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  const groupAware = useAppStore((s) => s.groupAwareLayout);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -27,28 +27,22 @@ function ArrangePicker({ onClose }: { onClose: () => void }) {
   const pick = (algo: LayoutAlgorithm) => {
     store.getState().setLayoutAlgorithm(algo);
     store.getState().resetPositions();
+    schedulePersist();
     onClose();
   };
 
   return (
     <div class="ddd-arrange-picker" ref={ref}>
       <div class="ddd-arrange-picker__title">Choose auto arrange algorithm</div>
-      {ALGORITHMS.map((a, i) => (
+      {ALGORITHMS.map((a) => (
         <button key={a.id} class="ddd-arrange-picker__item" onClick={() => pick(a.id)}>
           <span class="ddd-arrange-picker__item-icon">{a.icon()}</span>
           <span class="ddd-arrange-picker__item-body">
             <span class="ddd-arrange-picker__item-name">{a.label}</span>
             <span class="ddd-arrange-picker__item-desc">{a.desc}</span>
           </span>
-          <span class="ddd-arrange-picker__item-num">{i + 1}</span>
         </button>
       ))}
-      <label class="ddd-arrange-picker__toggle-row">
-        <span class="ddd-arrange-picker__toggle-label">Keep groups together</span>
-        <span class={`ddd-toggle ${groupAware ? 'is-on' : ''}`} onClick={() => store.getState().setGroupAwareLayout(!groupAware)}>
-          <span class="ddd-toggle__thumb" />
-        </span>
-      </label>
     </div>
   );
 }
