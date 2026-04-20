@@ -197,8 +197,20 @@ interface ExportedField {
   increment: boolean;
 }
 
+interface ExportedIndexColumn {
+  value: string;
+  type: 'column' | 'expression';
+}
+
+interface ExportedIndex {
+  columns: ExportedIndexColumn[];
+  pk: boolean;
+  unique: boolean;
+}
+
 interface ExportedTable {
   fields: ExportedField[];
+  indexes?: ExportedIndex[];
   name: string;
   alias: string | null;
   note: string;
@@ -283,11 +295,23 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
       const rawChanges = migrationChanges.get(cleanName);
       const columnChanges: Record<string, ColumnChange> = {};
       if (rawChanges) for (const [col, change] of rawChanges) columnChanges[col] = change;
+      const pkIndexCols = new Set<string>();
+      for (const idx of t.indexes ?? []) {
+        if (idx.pk) {
+          for (const c of idx.columns) {
+            if (c.type === 'column') pkIndexCols.add(unquote(c.value));
+          }
+        }
+      }
+      const columns = (t.fields ?? []).map((f) => {
+        const col = mapField(f);
+        return pkIndexCols.has(col.name) ? { ...col, pk: true } : col;
+      });
       tables.push({
         name: qn,
         schemaName,
         tableName: cleanName,
-        columns: (t.fields ?? []).map(mapField),
+        columns,
         note: t.note || null,
         groupName: tableToGroup.get(qn) ?? null,
         columnChanges,

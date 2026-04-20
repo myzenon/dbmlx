@@ -142,9 +142,9 @@ class DbmlxHoverProvider implements vscode.HoverProvider {
     }
 
     // ── keyword hover ───────────────────────────────────────────────────────
-    const wordRange = doc.getWordRangeAtPosition(pos, /[\w.]+/);
+    const wordRange = doc.getWordRangeAtPosition(pos, /(?:"[^"]+"|[\w.])+/);
     if (wordRange) {
-      const word = doc.getText(wordRange).toLowerCase();
+      const word = doc.getText(wordRange).replace(/"/g, '').toLowerCase();
 
       // "not null" / "not" before "null"
       if (word === 'not') {
@@ -184,8 +184,7 @@ class DbmlxHoverProvider implements vscode.HoverProvider {
 
     // ── table hover (existing) ──────────────────────────────────────────────
     if (!wordRange) return;
-    const word = doc.getText(wordRange);
-    const table = this.resolveTable(word);
+    const table = this.resolveTable(doc.getText(wordRange));
     if (!table) return;
     return new vscode.Hover(this.tableMarkdown(table), wordRange);
   }
@@ -223,9 +222,10 @@ class DbmlxHoverProvider implements vscode.HoverProvider {
   }
 
   private resolveTable(word: string): Table | undefined {
-    const candidates: string[] = [word];
-    if (word.includes('.')) {
-      const parts = word.split('.');
+    const w = word.replace(/"/g, '');
+    const candidates: string[] = [w];
+    if (w.includes('.')) {
+      const parts = w.split('.');
       candidates.push(parts.slice(0, -1).join('.'));
       candidates.push(parts[0]!);
     }
@@ -288,9 +288,9 @@ class DbmlxDefinitionProvider implements vscode.DefinitionProvider {
       return new vscode.Location(targetUri, new vscode.Position(0, 0));
     }
 
-    const wordRange = doc.getWordRangeAtPosition(pos, /[\w.]+/);
+    const wordRange = doc.getWordRangeAtPosition(pos, /(?:"[^"]+"|[\w.])+/);
     if (!wordRange) return;
-    const word = doc.getText(wordRange);
+    const word = doc.getText(wordRange).replace(/"/g, '');
 
     // "table.column" → jump to column definition line
     if (word.includes('.')) {
@@ -447,7 +447,8 @@ function isDiagramViewSection(k: BlockKind): k is 'diagramview-tables' | 'diagra
 }
 
 function extractTableName(lineText: string): string | undefined {
-  return /^table\s+([\w."]+)/i.exec(lineText.trim())?.[1];
+  const m = /^table\s+([\w."]+)/i.exec(lineText.trim());
+  return m ? m[1]!.replace(/"/g, '') : undefined;
 }
 
 // ── Completion ──────────────────────────────────────────────────────────────
@@ -476,11 +477,14 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       return [item];
     }
 
-    // 1. After `word.` → column names of that table
-    const dotMatch = /(\w+)\.$/.exec(linePrefix);
+    // 1. After `word.` or `"schema"."table".` → column names of that table
+    const dotMatch = /(?:(?:"([^"]+)"|(\w+))\.)?(?:"([^"]+)"|(\w+))\.$/.exec(linePrefix);
     if (dotMatch) {
-      const table =
-        this.index.getTable(dotMatch[1]!) ?? this.index.getTable(`public.${dotMatch[1]!}`);
+      const schema = dotMatch[1] ?? dotMatch[2];
+      const tbl = dotMatch[3] ?? dotMatch[4]!;
+      const table = (schema ? this.index.getTable(`${schema}.${tbl}`) : undefined)
+        ?? this.index.getTable(tbl)
+        ?? this.index.getTable(`public.${tbl}`);
       if (table) {
         return table.columns.map((col) => {
           const item = new vscode.CompletionItem(col.name, vscode.CompletionItemKind.Field);
@@ -548,7 +552,7 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     // 4. Inside Table block at type position: `  colName <cursor>`
-    if (block === 'table' && /^\s+\w+\s+\w*$/.test(linePrefix)) {
+    if (block === 'table' && /^\s+(?:"[^"]+"|[\w]+)\s+\w*$/.test(linePrefix)) {
       return SQL_TYPES.map((t, i) => {
         const item = new vscode.CompletionItem(t, vscode.CompletionItemKind.TypeParameter);
         item.sortText = String(i).padStart(4, '0');
@@ -569,7 +573,7 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
     }
 
     // 6. Inside Ref block or inline `Ref:` line → table.column + operators
-    const isRefLine = /(?:^|\s)ref\s*(?:\w+\s*)?:\s*/i.test(linePrefix);
+    const isRefLine = /(?:^|\s)ref\s*(?:(?:"[^"]+"|[\w]+)\s*)?:\s*/i.test(linePrefix);
     if (block === 'ref' || isRefLine) {
       return this.refCompletions(linePrefix, uri);
     }
@@ -650,11 +654,11 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
 
   private refCompletions(linePrefix: string, uri: vscode.Uri): vscode.CompletionItem[] {
     // After operator → right-side table.column
-    if (/(?:<>|[<>\-])\s*[\w.]*$/.test(linePrefix)) {
+    if (/(?:<>|[<>-])\s*(?:"[^"]*"|[\w.])*$/.test(linePrefix)) {
       return this.tableColumnItems(uri);
     }
-    // After `word.word` with no operator → operators
-    if (/\w+\.\w*\s*$/.test(linePrefix) && !/(?:<>|[<>\-])/.test(linePrefix)) {
+    // After `word.word` or `"word"."word"` with no operator → operators
+    if (/(?:"[^"]+"|[\w]+)\.(?:"[^"]*"|\w*)\s*$/.test(linePrefix) && !/(?:<>|[<>-])/.test(linePrefix)) {
       return REF_OPERATORS.map(({ label, doc: d }) => {
         const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Operator);
         item.documentation = d;

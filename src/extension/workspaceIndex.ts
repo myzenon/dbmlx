@@ -313,7 +313,7 @@ export class WorkspaceIndex implements vscode.Disposable {
     this.tableLocations.clear();
     this.columnLocations.clear();
 
-    const COL_RE = /^\s{1,}(\w+)\s+\S/;
+    const COL_RE = /^\s{1,}(?:"([^"]+)"|(\w+))\s+\S/;
     const SKIP_RE = /^\s*(indexes|note|Note)\s*[:{]/;
 
     for (const f of this.raw.values()) {
@@ -346,7 +346,7 @@ export class WorkspaceIndex implements vscode.Disposable {
         if (currentQn && depth === tableBodyDepth && !tableMatch && !SKIP_RE.test(line)) {
           const colMatch = COL_RE.exec(line);
           if (colMatch) {
-            const col = colMatch[1]!;
+            const col = (colMatch[1] ?? colMatch[2])!;
             const key = `${currentQn}\0${col}`;
             if (!this.columnLocations.has(key)) {
               this.columnLocations.set(key, { uri: f.uri, line: i });

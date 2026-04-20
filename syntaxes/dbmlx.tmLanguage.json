@@ -112,7 +112,7 @@
     },
     "column-definition": {
       "name": "meta.column.dbmlx",
-      "match": "^\\s*(\\w+)\\s+([\\w\\(\\)\\[\\], ]+?)(?=\\s*(?:\\[|//|$))",
+      "match": "^\\s*(\"[^\"]+\"|\\w+)\\s+([\\w\\(\\)\\[\\], ]+?)(?=\\s*(?:\\[|//|$))",
       "captures": {
         "1": { "name": "variable.other.column.dbmlx" },
         "2": { "name": "support.type.column-type.dbmlx" }
@@ -195,7 +195,7 @@
     },
     "ref-inline": {
       "name": "meta.ref.inline.dbmlx",
-      "match": "(?i)\\b(Ref)\\s*(?:(\\w+)\\s*)?:\\s*([\\w.]+)\\s*(<>|[<>-])\\s*([\\w.]+)",
+      "match": "(?i)\\b(Ref)\\s*(?:((?:\"[^\"]+\"|\\w+))\\s*)?:\\s*((?:\"[^\"]+\"|\\w+)(?:\\.(?:\"[^\"]+\"|\\w+))*)\\s*(<>|[<>-])\\s*((?:\"[^\"]+\"|\\w+)(?:\\.(?:\"[^\"]+\"|\\w+))*)",
       "captures": {
         "1": { "name": "keyword.other.ref.dbmlx" },
         "2": { "name": "entity.name.ref.dbmlx" },
@@ -206,7 +206,7 @@
     },
     "ref-block": {
       "name": "meta.ref.block.dbmlx",
-      "begin": "(?i)\\b(Ref)\\s*(?:(\\w+)\\s*)?\\s*(\\{)",
+      "begin": "(?i)\\b(Ref)\\s*(?:((?:\"[^\"]+\"|\\w+))\\s*)?\\s*(\\{)",
       "beginCaptures": {
         "1": { "name": "keyword.other.ref.dbmlx" },
         "2": { "name": "entity.name.ref.dbmlx" },
@@ -221,7 +221,7 @@
         { "include": "#ref-operator" },
         {
           "name": "variable.other.table-column.dbmlx",
-          "match": "[\\w.()]+"
+          "match": "(?:\"[^\"]+\"|\\w+)(?:\\.(?:\"[^\"]+\"|\\w+))*"
         }
       ]
     },
