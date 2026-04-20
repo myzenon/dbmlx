@@ -192,11 +192,19 @@ function ColumnRow({ col, isFk, change }: { col: Column; isFk: boolean; change?:
       <li class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}`} onMouseEnter={onEnter} onMouseLeave={onLeave}>
         <div class="ddd-col__before">
           <span class="ddd-table__col-left"><span class="ddd-table__col-name">{fromName}</span></span>
-          <span class="ddd-table__col-right"><span class="ddd-table__col-type">{fromType}</span></span>
+          <span class="ddd-table__col-right">
+            <span class="ddd-table__col-type">{fromType}</span>
+            {col.notNull ? <span class="ddd-table__badge" title="not null">NN</span> : null}
+            {col.unique ? <span class="ddd-table__badge" title="unique">U</span> : null}
+          </span>
         </div>
         <div class="ddd-col__after">
           <span class="ddd-table__col-left"><span class="ddd-table__col-name">{col.name}</span></span>
-          <span class="ddd-table__col-right"><span class="ddd-table__col-type">{col.type}</span></span>
+          <span class="ddd-table__col-right">
+            <span class="ddd-table__col-type">{col.type}</span>
+            {col.notNull ? <span class="ddd-table__badge" title="not null">NN</span> : null}
+            {col.unique ? <span class="ddd-table__badge" title="unique">U</span> : null}
+          </span>
         </div>
       </li>
     );

@@ -92,7 +92,7 @@ function extractMigrationChanges(source: string): {
 
   const TABLE_OPEN_RE = /^\s*[Tt]able\s+([\w"`.]+(?:\.[\w"`.]+)?)/;
   const COL_NAME_RE = /^\s+(?:"([^"]+)"|(\w+))\s/;
-  const MODIFY_RE = /\[modify:\s*([^\]]*)\]/i;
+  const MODIFY_RE = /\[[^\]]*\bmodify:\s*([^\]]*)\]/i;
 
   for (const line of lines) {
     const clean = line.replace(/"[^"]*"|'[^']*'|`[^`]*`|\/\/.*$/g, '');
@@ -118,14 +118,14 @@ function extractMigrationChanges(source: string): {
       const colMatch = COL_NAME_RE.exec(line);
       const colName = colMatch ? (colMatch[1] ?? colMatch[2]) : undefined;
       if (colName) {
-        // [modify: name="x", type="y"]
+        // [{WHATEVER_RULES}modify: name="x", type="y"]
         const modifyMatch = MODIFY_RE.exec(line);
         if (modifyMatch) {
           const body = modifyMatch[1]!;
           const fromName = /\bname\s*=\s*"([^"]*)"/.exec(body)?.[1];
           const fromType = /\btype\s*=\s*"([^"]*)"/.exec(body)?.[1];
           tableChanges.set(colName, { kind: 'modify', fromName, fromType });
-          processedLine = line.replace(/\s*\[modify:\s*[^\]]*\]/i, '').trimEnd();
+          processedLine = line.replace(/,?\s*modify:\s*[^\]]*/i, '').trimEnd();
           outLines.push(processedLine);
           continue;
         }
