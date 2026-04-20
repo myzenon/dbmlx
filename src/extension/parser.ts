@@ -254,9 +254,12 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
   const groups: TableGroup[] = [];
   const tableToGroup = new Map<QualifiedName, string>();
 
+  // Pass 1: build the complete tableToGroup map and groups list across ALL schemas before
+  // assigning groupName to tables. @dbml/core may emit TableGroup definitions in a different
+  // schema entry than the tables they reference (e.g. billing.orders table in "billing" schema,
+  // but the TableGroup definition ends up in the "public" schema entry which is listed last).
   for (const s of db.schemas) {
     const schemaName = s.name && s.name.length > 0 ? s.name : 'public';
-
     for (const g of s.tableGroups ?? []) {
       const members: QualifiedName[] = [];
       for (const t of g.tables ?? []) {
@@ -267,6 +270,11 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
       members.sort();
       groups.push({ name: unquote(g.name), tables: members });
     }
+  }
+
+  // Pass 2: build tables now that tableToGroup is fully populated.
+  for (const s of db.schemas) {
+    const schemaName = s.name && s.name.length > 0 ? s.name : 'public';
 
     for (const t of s.tables ?? []) {
       const cleanName = unquote(t.name);
