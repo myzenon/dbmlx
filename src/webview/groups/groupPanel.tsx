@@ -87,10 +87,10 @@ export function GroupPanel() {
   const anyExpanded = groups.some((g) => !(groupState[g.name]?.collapsed));
 
   const toggleAllHidden = () => {
-    const target = anyVisible;
-    for (const g of groups) store.getState().setGroup(g.name, { hidden: target });
-    if (!target) {
-      for (const name of hiddenTables) store.getState().setTableHidden(name, false);
+    const target = anyVisible; // true = hide all, false = show all
+    for (const g of groups) {
+      store.getState().setGroup(g.name, { hidden: target });
+      for (const t of g.tables) store.getState().setTableHidden(t, target);
     }
     schedulePersist();
   };
@@ -244,7 +244,9 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
   const expanded = filter.length > 0 ? true : userExpanded;
 
   const toggleHidden = () => {
-    store.getState().setGroup(group.name, { hidden: !hidden });
+    const next = !hidden;
+    store.getState().setGroup(group.name, { hidden: next });
+    for (const t of group.tables) store.getState().setTableHidden(t, next);
     schedulePersist();
   };
   const toggleCollapsed = () => {
@@ -320,7 +322,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
         <li class="ddd-group-children">
           <ul class="ddd-table-list">
             {memberTables.map((name) => (
-              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} annFlags={tableAnnotations.get(name)} />
+              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} annFlags={tableAnnotations.get(name)} groupName={group.name} />
             ))}
           </ul>
         </li>
@@ -329,10 +331,22 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
   );
 }
 
-function TableRow({ tableName, hidden, annFlags }: { tableName: string; hidden: boolean; annFlags?: Set<AnnotationFilter> }) {
+function TableRow({ tableName, hidden, annFlags, groupName }: { tableName: string; hidden: boolean; annFlags?: Set<AnnotationFilter>; groupName?: string }) {
   const shortName = tableName.startsWith('public.') ? tableName.slice(7) : tableName;
   const toggle = () => {
-    store.getState().setTableHidden(tableName, !hidden);
+    const next = !hidden;
+    store.getState().setTableHidden(tableName, next);
+    if (groupName) {
+      const s = store.getState();
+      const gs = s.groups[groupName];
+      if (!next && gs?.hidden) {
+        s.setGroup(groupName, { hidden: false });
+      } else if (next) {
+        const groupTables = s.schema.groups.find((g) => g.name === groupName)?.tables ?? [];
+        const allHidden = groupTables.every((t) => t === tableName || s.hiddenTables.has(t));
+        if (allHidden) s.setGroup(groupName, { hidden: true });
+      }
+    }
     schedulePersist();
   };
   const badge = annFlags?.has('add') ? 'add' : annFlags?.has('drop') ? 'drop' : annFlags?.has('modified') ? 'modified' : null;
