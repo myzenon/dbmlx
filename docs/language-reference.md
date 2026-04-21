@@ -274,13 +274,38 @@ The before/after diff display uses these values:
 - **Before row** (strikethrough): old name, old type, icons/badges from old pk/not_null/unique. Falls back to current column values for any key not specified.
 - **After row** (amber): current column name, type, and settings as written on the line.
 
-### Rules
+### Column-level rules
 
 | Annotation | Meaning | Visual |
 |---|---|---|
 | `[add]` | Column being added. Does not exist before migration. | Green accent |
 | `[drop]` | Column being removed. Will not exist after migration. | Red strikethrough |
 | `[modify: ...]` | Column was changed. Write new state on the line; record old values inside `modify:`. | Two-row display: original (muted strikethrough) → new (amber) |
+
+### Table-level annotations
+
+`[add]` and `[drop]` can also appear on the `Table` declaration line to mark an entire table as new or removed:
+
+```dbmlx
+Table audit_log [add] {
+  id          int           [pk, increment]
+  event       varchar(255)
+  created_at  timestamp
+}
+// ↑ entire table is being added — green border + +NEW badge
+
+Table old_sessions [drop] {
+  id       int  [pk]
+  token    text
+  user_id  int
+}
+// ↑ entire table is being removed — red border, dimmed columns, DROP badge
+```
+
+| Annotation | Meaning | Visual |
+|---|---|---|
+| `Table name [add] { ... }` | Entire table being created in this migration | Green border, `+NEW` badge |
+| `Table name [drop] { ... }` | Entire table being removed in this migration | Red border, dimmed, `DROP` badge |
 
 - Annotations are stripped before passing to the underlying DBML parser — they never cause parse errors.
 - `[add]` and `[drop]` can be combined with standard column settings: `[not null, add]`, `[pk, drop]`.

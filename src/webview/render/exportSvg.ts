@@ -260,8 +260,11 @@ export function generateSvg(state: AppState): string {
 
     const gclr = t.groupName ? (grpState[t.groupName]?.color ?? hslColor(t.groupName)) : undefined;
     const tclr = tableColors.get(t.name) ?? gclr;
-    const hdr = tclr ? withAlpha(tclr, dark ? 0.22 : 0.15) : hdrFill;
-    const accent = tclr ?? tblBorder;
+    const tableAnn = t.tableChange;
+    const tableAnnColor = tableAnn === 'add' ? migAdd : tableAnn === 'drop' ? migDrop : null;
+    const hdrBase = tclr ? withAlpha(tclr, dark ? 0.22 : 0.15) : hdrFill;
+    const hdr = tableAnnColor ? withAlpha(tableAnnColor, 0.10) : hdrBase;
+    const accent = tableAnnColor ?? tclr ?? tblBorder;
     const changes = t.columnChanges ?? {};
     const changeCount = Object.keys(changes).length;
 
@@ -325,18 +328,32 @@ export function generateSvg(state: AppState): string {
     }
     L.push('</g>');
     // Border + accents (unclipped for crisp rendering)
-    L.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="none" stroke="${tblBorder}" stroke-width="1"/>`);
+    const borderStroke = tableAnnColor ?? tblBorder;
+    const borderW = tableAnnColor ? 1.5 : 1;
+    const tableOpacity = tableAnn === 'drop' ? 'opacity="0.72"' : '';
+    L.push(`<g ${tableOpacity}>`);
+    L.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="none" stroke="${borderStroke}" stroke-width="${borderW}"/>`);
     L.push(`<rect x="${x}" y="${y}" width="${w}" height="3" rx="2" fill="${accent}"/>`);
     if (changeCount > 0) L.push(`<rect x="${x}" y="${y + 3}" width="3" height="${h - 3}" rx="1" fill="${migModify}"/>`);
     L.push(`<line x1="${x}" y1="${y + TABLE_HEADER_H}" x2="${x + w}" y2="${y + TABLE_HEADER_H}" stroke="${tblBorder}" stroke-width="1"/>`);
     const display = t.schemaName !== 'public' ? `${t.schemaName}.${t.tableName}` : t.tableName;
-    L.push(`<text x="${x + 8}" y="${y + TABLE_HEADER_H - 8}" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${fg}">${esc(display)}</text>`);
+    const nameDecoration = tableAnn === 'drop' ? ' text-decoration="line-through"' : '';
+    L.push(`<text x="${x + 8}" y="${y + TABLE_HEADER_H - 8}" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${fg}"${nameDecoration}>${esc(display)}</text>`);
+    if (tableAnn) {
+      const badgeLabel = tableAnn === 'add' ? '+NEW' : 'DROP';
+      const bx = x + 8 + display.length * 7.2 + 16;
+      const by = y + TABLE_HEADER_H - 14;
+      const bw = tableAnn === 'add' ? 28 : 26;
+      L.push(`<rect x="${bx}" y="${by - 7}" width="${bw}" height="14" rx="7" fill="${tableAnnColor}"/>`);
+      L.push(`<text x="${bx + bw / 2}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="white" text-anchor="middle">${badgeLabel}</text>`);
+    }
     if (changeCount > 0) {
-      const bx = x + 8 + display.length * 7.2 + 10;
+      const bx = x + 8 + display.length * 7.2 + (tableAnn ? 50 : 10);
       const by = y + TABLE_HEADER_H - 14;
       L.push(`<circle cx="${bx}" cy="${by}" r="7" fill="${migModify}"/>`);
       L.push(`<text x="${bx}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="white" text-anchor="middle">${changeCount}</text>`);
     }
+    L.push('</g>');
   }
 
   // Collapsed group nodes

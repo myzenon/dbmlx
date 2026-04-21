@@ -69,9 +69,20 @@ Table orders {
 }
 ```
 
-- `[add]` — rendered with a green accent
-- `[drop]` — rendered with a red strikethrough
+- `[add]` — rendered with a green accent (column) or green border + `+NEW` badge (table)
+- `[drop]` — rendered with a red strikethrough (column) or red border + `DROP` badge (table)
 - `[modify: ...]` — two-row display: original (strikethrough) → new (amber). All keys are optional.
+
+`[add]` and `[drop]` work on the `Table` declaration line too, to mark entire tables as added or removed:
+
+```dbmlx
+Table audit_log [add] {   // new table — green border
+  id int [pk]
+}
+Table old_cache [drop] {  // removed table — red border, dimmed
+  id int [pk]
+}
+```
 
 `modify:` keys — write the column in its new state, record old values in the annotation:
 

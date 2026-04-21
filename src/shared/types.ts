@@ -46,6 +46,8 @@ export interface Table {
   groupName?: string | null;
   /** Migration change annotations keyed by column name. Empty object if no changes. */
   columnChanges?: Record<string, ColumnChange>;
+  /** Table-level migration annotation: entire table is being added or dropped. */
+  tableChange?: 'add' | 'drop';
 }
 
 export type RefEndpointRelation = '1' | '*'; // one or many

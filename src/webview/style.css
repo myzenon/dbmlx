@@ -489,6 +489,34 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
   flex-shrink: 0;
 }
 
+/* ADD table — green border + tinted header */
+.ddd-table--add {
+  border-top: 3px solid var(--ddd-mig-add) !important;
+  box-shadow: 0 0 0 1.5px var(--ddd-mig-add);
+}
+.ddd-table--add .ddd-table__header {
+  background: rgba(76, 175, 80, 0.12) !important;
+}
+
+/* DROP table — red border, dimmed, strikethrough name */
+.ddd-table--drop {
+  border-top: 3px solid var(--ddd-mig-drop) !important;
+  box-shadow: 0 0 0 1.5px var(--ddd-mig-drop);
+  opacity: 0.72;
+}
+.ddd-table--drop .ddd-table__header {
+  background: rgba(244, 67, 54, 0.10) !important;
+}
+.ddd-table--drop .ddd-table__name,
+.ddd-table--drop .ddd-table__schema {
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+/* Badge color overrides for table-level add/drop */
+.ddd-table__change-badge--add  { background: var(--ddd-mig-add); }
+.ddd-table__change-badge--drop { background: var(--ddd-mig-drop); }
+
 /* ADD column — green tint */
 .ddd-table__col.ddd-col--add {
   background: rgba(76, 175, 80, 0.12);

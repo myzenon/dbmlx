@@ -9,9 +9,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 The `.dbmlx` language is a superset of DBML: all standard DBML syntax is valid, plus `!include`, `DiagramView`, and migration diff annotations (`[add]`, `[drop]`, `[modify: ...]`).
 
 Migration diff annotations — write column in its **new** state, record old values in the annotation:
-- `[add]` — column is new (green accent)
-- `[drop]` — column is removed (red strikethrough)
+- `[add]` — column or **entire table** is new (green accent / green border + `+NEW` badge)
+- `[drop]` — column or **entire table** is removed (red strikethrough / red border + `DROP` badge)
 - `[modify: key=value, ...]` — column was changed; before/after diff rendered in amber
+
+`[add]`/`[drop]` on the `Table` declaration line marks the whole table:
+```dbmlx
+Table audit_log [add] { ... }   // whole table is new
+Table old_cache [drop] { ... }  // whole table is removed
+```
 
 `modify:` keys (all optional, any order, combine freely with standard settings like `[pk, not null, modify: ...]`):
 

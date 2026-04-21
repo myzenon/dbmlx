@@ -46,12 +46,12 @@ const KEYWORD_HOVER: Record<string, { title: string; body: string }> = {
 
 const DIFF_ANNOTATION_HOVER: Record<string, { title: string; body: string }> = {
   add: {
-    title: 'add — New Column',
-    body: 'Marks this column as **added** in the current migration.\n\nThe column will be rendered with a green ➕ accent in the diagram.\n\n```dbmlx\ncreated_at timestamp [add]\nemail varchar(255) [add, not null]\n```',
+    title: 'add — New in Migration',
+    body: 'Marks this column **or table** as **added** in the current migration.\n\n**Column:** Renders with a green ➕ accent.\n```dbmlx\ncreated_at timestamp [add]\n```\n\n**Table:** Renders with a green border and `+NEW` badge.\n```dbmlx\nTable audit_log [add] {\n  id int [pk]\n}\n```',
   },
   drop: {
-    title: 'drop — Dropped Column',
-    body: 'Marks this column as **dropped** in the current migration.\n\nThe column will be rendered with a red 🗑 strikethrough accent in the diagram.\n\n```dbmlx\nlegacy_id int [drop]\nold_name varchar(100) [drop]\n```',
+    title: 'drop — Dropped in Migration',
+    body: 'Marks this column **or table** as **dropped** in the current migration.\n\n**Column:** Renders with a red strikethrough accent.\n```dbmlx\nlegacy_id int [drop]\n```\n\n**Table:** Renders with a red border, dimmed columns, and `DROP` badge.\n```dbmlx\nTable old_sessions [drop] {\n  id int [pk]\n}\n```',
   },
   modify: {
     title: 'modify — Modified Column',
@@ -383,6 +383,12 @@ const TOPLEVEL_SNIPPETS: Array<{ label: string; snippet: string; doc: string }> 
   { label: 'DiagramView', snippet: 'DiagramView ${1:name} {\n\tTables { * }\n}', doc: 'Define a named filterable view of the diagram.' },
 ];
 
+const TABLE_HEADER_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind }> = [
+  { label: 'add',  doc: 'Migration diff — this entire table is being created in this migration. Renders with a green border and +NEW badge.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'drop', doc: 'Migration diff — this entire table is being dropped in this migration. Renders with a red border, dimmed columns, and DROP badge.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'headercolor: ', doc: 'Custom header color for this table in the diagram.', kind: vscode.CompletionItemKind.Property },
+];
+
 const MODIFY_KEYS: Array<{ label: string; doc: string; snippet: string }> = [
   { label: 'name=',      doc: 'Column name before migration',           snippet: 'name="${1:old_name}"' },
   { label: 'type=',      doc: 'Column type before migration',           snippet: 'type="${1:old_type}"' },
@@ -624,7 +630,10 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
         return this.operatorItems();
       }
 
-      const settings = block === 'indexes' ? INDEX_SETTINGS : COLUMN_SETTINGS;
+      const isTableHeaderLine = /^\s*[Tt]able\b/.test(lineText);
+      const settings = block === 'indexes' ? INDEX_SETTINGS
+        : isTableHeaderLine ? TABLE_HEADER_SETTINGS
+        : COLUMN_SETTINGS;
       return settings.map((s) => {
         const item = new vscode.CompletionItem(s.label, s.kind ?? vscode.CompletionItemKind.Keyword);
         item.documentation = s.doc;

@@ -114,7 +114,13 @@
         "2": { "name": "entity.name.type.table.dbmlx" },
         "3": { "name": "keyword.other.as.dbmlx" },
         "4": { "name": "variable.other.alias.dbmlx" },
-        "5": { "name": "meta.table-settings.dbmlx" },
+        "5": {
+          "name": "meta.table-settings.dbmlx",
+          "patterns": [
+            { "name": "markup.inserted.dbmlx", "match": "\\badd\\b" },
+            { "name": "markup.deleted.dbmlx", "match": "\\bdrop\\b" }
+          ]
+        },
         "6": { "name": "punctuation.section.block.begin.dbmlx" }
       },
       "end": "\\}",

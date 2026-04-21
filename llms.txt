@@ -92,10 +92,16 @@ Ref: orders.customer_id > customers.id
 ```
 
 Annotation summary:
-- `[add]`  — column is being added; does not exist before migration
-- `[drop]` — column is being removed; will not exist after migration
+- `[add]`  — column or table is being added; does not exist before migration
+- `[drop]` — column or table is being removed; will not exist after migration
 - `[modify: ...]` — column was changed; write the column in its NEW state, record
   original values inside `modify:`. All keys are optional — omit unchanged ones.
+
+`[add]` and `[drop]` work on the Table declaration line to mark an entire table:
+```dbmlx
+Table audit_log [add] { ... }   // new table — green border + +NEW badge
+Table old_cache [drop] { ... }  // removed table — red border + DROP badge
+```
 
 `modify:` keys:
 
