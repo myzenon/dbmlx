@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.11] - 2026-04-21
+
+### Added
+- **CMD+/ comment toggle**: `language-configuration.json` added so `Ctrl+/` / `Cmd+/` toggles line comments (`//`) in `.dbmlx` files
+- **Ref auto-complete chain**: Typing `Ref "name": ` now shows schema names automatically; picking a schema triggers table completions; picking a table triggers column completions; picking a column triggers operator completions (`>`, `<`, `-`, `<>`); picking an operator triggers right-side schema completions — no `Ctrl+Space` required
+- **Composite FK completions**: `"table".(col1, col2)` tuple syntax recognized in Ref completions
+- **Double-quoted identifier support in LSP**: Hover, go-to-definition, and completions now work for schema/table/column names that use double-quote quoting (e.g. `"my schema"."my table"."my column"`)
+
+### Fixed
+- **Syntax highlighting for column annotations**: `[add]`, `[drop]`, and `[modify: ...]` annotations now highlight in the editor — green for `add`, red for `drop`, amber for `modify`, with modify keys colored distinctly
+- **Ref syntax highlighting**: Schema, table, column, and operator parts in `Ref:` declarations each get distinct colors
+- **`[modify:]` edge routing**: FK edges now point to the correct (amber/after) row of a `[modify:]` column, not the strikethrough/before row
+- **PK/FK filter — edge routing**: Enabling "PK/FK only" now correctly updates edge attachment Y positions and table bounding boxes for routing
+- **PK/FK filter — group container boundary**: Group boundary boxes now shrink to the actual filtered column height instead of always using the full unfiltered table height
+- **Auto layout — hidden tables**: Auto-arrange no longer creates phantom gaps for tables that are individually hidden or belong to hidden/collapsed groups
+
 ## [0.1.4] - 2026-04-19
 
 ### Added

@@ -144,7 +144,7 @@ Full language server features for `.dbmlx` files:
 | **Hover** | Table schema with column diff state; keyword docs for every construct including `[add]`, `[drop]`, `[modify:]` |
 | **Go-to-definition** | Jump to table or **column** definition; `!include` → open included file |
 | **Document symbols** | Outline panel lists all tables and columns |
-| **Completions** | Table names, column names, SQL types, settings, ref operators, diff annotations, `!include` file paths |
+| **Completions** | Table names, column names, SQL types, settings, ref operators, diff annotations, `!include` file paths; `Ref:` completions chain automatically: schema → table → column → operator → right-side schema/table/column without `Ctrl+Space`; composite FK tuple syntax supported |
 | **Formatting** | Auto-format on save — consistent indentation, idempotent |
 | **Diagnostics** | Parse errors shown as squiggles with line/column |
 

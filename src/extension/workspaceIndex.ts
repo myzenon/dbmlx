@@ -48,6 +48,13 @@ export class WorkspaceIndex implements vscode.Disposable {
   private readonly raw = new Map<string, RawFile>();
   /** Stitched+parsed result per root file. */
   private readonly roots = new Map<string, StitchedRoot>();
+  /**
+   * Last successfully parsed Schema per root URI.
+   * LSP providers (completion, hover, definition) fall back to this when the
+   * current parse fails (e.g. while the user is mid-way through typing a Ref
+   * or a new column). Diagnostics still reflect the actual error.
+   */
+  private readonly bestSchemas = new Map<string, Schema>();
   /** Table → source file + line (from regex scan, not @dbml/core). */
   private readonly tableLocations = new Map<QualifiedName, SymbolLocation>();
   /** "schema.table\0col" → source file + line for column definitions. */
@@ -92,6 +99,7 @@ export class WorkspaceIndex implements vscode.Disposable {
     });
     watcher.onDidDelete(async (u) => {
       this.raw.delete(u.toString());
+      this.bestSchemas.delete(u.toString());
       await this.rebuild(u);
     });
     this.disposables.push(watcher);
@@ -249,6 +257,12 @@ export class WorkspaceIndex implements vscode.Disposable {
       const t = root.schema.tables.find((tb) => tb.name === name);
       if (t) return t;
     }
+    // Fall back to last good schemas — keeps LSP working while the file has a
+    // transient parse error (e.g. mid-edit, incomplete Ref statement).
+    for (const schema of this.bestSchemas.values()) {
+      const t = schema.tables.find((tb) => tb.name === name);
+      if (t) return t;
+    }
     return undefined;
   }
 
@@ -263,11 +277,18 @@ export class WorkspaceIndex implements vscode.Disposable {
 
   public getGroupNames(uri: vscode.Uri): string[] {
     const names = new Set<string>();
+    let found = false;
     for (const root of this.roots.values()) {
       if (!root.schema) continue;
       const reachable = this.reachableUris(root.uri);
       if (!reachable.has(uri.toString())) continue;
       for (const g of root.schema.groups) names.add(g.name);
+      found = true;
+    }
+    if (!found) {
+      for (const schema of this.bestSchemas.values()) {
+        for (const g of schema.groups) names.add(g.name);
+      }
     }
     return [...names].sort();
   }
@@ -350,6 +371,10 @@ export class WorkspaceIndex implements vscode.Disposable {
           const mapped = mapLineToLocal(result.error.line ?? 1, stitched.spans);
           errorUri = mapped?.uri ?? f.uri;
           errorLocalLine = mapped?.localLine ?? result.error.line ?? null;
+        } else if (result.schema) {
+          // Persist the last good schema so LSP can still serve completions/hover
+          // while the user is mid-edit and the file temporarily fails to parse.
+          this.bestSchemas.set(f.uri.toString(), result.schema);
         }
         this.roots.set(f.uri.toString(), {
           uri: f.uri,

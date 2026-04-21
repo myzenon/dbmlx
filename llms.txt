@@ -1,6 +1,6 @@
 # DBMLX Language — AI Reference
 
-Version: 0.1.10
+Version: 0.1.11
 
 DBMLX (`.dbmlx`) is a superset of DBML. All standard DBML syntax is valid.
 This file documents only the dbmlx-specific extensions that don't exist in standard DBML.

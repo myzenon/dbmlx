@@ -376,11 +376,21 @@ const INDEX_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Completi
 
 const TOPLEVEL_SNIPPETS: Array<{ label: string; snippet: string; doc: string }> = [
   { label: 'Table', snippet: 'Table ${1:name} {\n\t$0\n}', doc: 'Define a database table.' },
-  { label: 'Ref', snippet: 'Ref: ${1:table.column} ${2|>,<,<>,-|} ${3:table.column}', doc: 'Define a relationship (inline).' },
+  { label: 'Ref', snippet: 'Ref "${1:name}": "${2:schema}"."${3:table}"."${4:column}" ${5|>,<,<>,-|} "${6:schema}"."${7:table}"."${8:column}"', doc: 'Define a relationship (inline).' },
   { label: 'Enum', snippet: 'Enum ${1:name} {\n\t$0\n}', doc: 'Define an enum type.' },
   { label: 'TableGroup', snippet: 'TableGroup ${1:name} {\n\t$0\n}', doc: 'Group tables into a bounded context.' },
   { label: 'Project', snippet: 'Project ${1:name} {\n\tdatabase_type: \'$1\'\n\t$0\n}', doc: 'Project-level metadata.' },
   { label: 'DiagramView', snippet: 'DiagramView ${1:name} {\n\tTables { * }\n}', doc: 'Define a named filterable view of the diagram.' },
+];
+
+const MODIFY_KEYS: Array<{ label: string; doc: string; snippet: string }> = [
+  { label: 'name=',      doc: 'Column name before migration',           snippet: 'name="${1:old_name}"' },
+  { label: 'type=',      doc: 'Column type before migration',           snippet: 'type="${1:old_type}"' },
+  { label: 'default=',   doc: 'Default value before migration',         snippet: 'default="${1:value}"' },
+  { label: 'pk=',        doc: 'PK status before migration',             snippet: 'pk=${1|true,false|}' },
+  { label: 'not_null=',  doc: 'NOT NULL status before migration',       snippet: 'not_null=${1|true,false|}' },
+  { label: 'unique=',    doc: 'UNIQUE status before migration',         snippet: 'unique=${1|true,false|}' },
+  { label: 'increment=', doc: 'Auto-increment status before migration', snippet: 'increment=${1|true,false|}' },
 ];
 
 const REF_OPERATORS: Array<{ label: string; doc: string }> = [
@@ -462,8 +472,23 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
   constructor(private readonly index: WorkspaceIndex) {}
 
   async provideCompletionItems(doc: vscode.TextDocument, pos: vscode.Position): Promise<vscode.CompletionItem[]> {
-    const linePrefix = doc.lineAt(pos).text.substring(0, pos.character);
+    const lineText = doc.lineAt(pos).text;
+    const linePrefix = lineText.substring(0, pos.character);
     const uri = doc.uri;
+
+    // When the cursor sits between auto-inserted quotes `""` (VS Code closes the
+    // quote the user typed), completions must replace the whole `""` pair so
+    // inserting `"schema"."table"."col"` doesn't produce `""schema"..."`.
+    const c = pos.character;
+    const hasCursorBetweenQuotes = c > 0 && lineText[c - 1] === '"' && (lineText[c] ?? '') === '"';
+    // replaceRange: covers the `""` pair — used for items whose insertText does NOT end with `.`
+    const replaceRange: vscode.Range | undefined = hasCursorBetweenQuotes
+      ? new vscode.Range(pos.line, c - 1, pos.line, c + 1)
+      : undefined;
+    // replaceRangeDot: also swallows the following `.` to avoid double-dot when editing in-place
+    const replaceRangeDot: vscode.Range | undefined = hasCursorBetweenQuotes
+      ? new vscode.Range(pos.line, c - 1, pos.line, lineText[c + 1] === '.' ? c + 2 : c + 1)
+      : undefined;
 
     // 0a. Inside !include "..." → suggest .dbmlx file paths
     if (INCLUDE_PREFIX_RE.test(linePrefix)) {
@@ -482,17 +507,24 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       return [item];
     }
 
-    // 1. After `word.` or `"schema"."table".` → column names of that table
-    const dotMatch = /(?:(?:"([^"]+)"|(\w+))\.)?(?:"([^"]+)"|(\w+))\.$/.exec(linePrefix);
+    // When the cursor sits between auto-inserted quotes, strip the trailing `"` before
+    // running dotMatch so `"public"."` (cursor between `""`) still resolves to tables.
+    const dotCheckPrefix = replaceRange ? linePrefix.slice(0, -1) : linePrefix;
+
+    // 1. After `"schema".` or `"schema"."table".` → table names or column names
+    const dotMatch = /(?:(?:"([^"]+)"|(\w+))\.)?(?:"([^"]+)"|(\w+))\.$/.exec(dotCheckPrefix);
     if (dotMatch) {
       const schema = dotMatch[1] ?? dotMatch[2];
       const tbl = dotMatch[3] ?? dotMatch[4]!;
       const table = (schema ? this.index.getTable(`${schema}.${tbl}`) : undefined)
         ?? this.index.getTable(tbl)
         ?? this.index.getTable(`public.${tbl}`);
+      // An operator in linePrefix means we're completing the right-hand side of a Ref
+      const isRightSide = /(?:<>|[<>-])/.test(linePrefix);
       if (table) {
+        // Two-segment match resolved to a real table → suggest its columns
         return table.columns.map((col) => {
-          const item = new vscode.CompletionItem(col.name, vscode.CompletionItemKind.Field);
+          const item = new vscode.CompletionItem(`"${col.name}"`, vscode.CompletionItemKind.Field);
           item.detail = col.type;
           item.documentation = [
             col.pk ? 'PRIMARY KEY' : '',
@@ -501,6 +533,46 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
           ]
             .filter(Boolean)
             .join(', ');
+          if (replaceRange) item.range = replaceRange;
+          // Left-side column: auto-show operators. Right-side: ref is complete, no more popup.
+          if (!isRightSide) {
+            item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest operators' };
+          }
+          return item;
+        });
+      }
+
+      // No table found — the identifier before `.` may be a schema name.
+      // Return all tables in that schema as `"tableName"` completions.
+      const schemaPrefix = `${tbl}.`;
+      const schemaTableItems: vscode.CompletionItem[] = [];
+      for (const qn of this.index.getVisibleTableNames(uri)) {
+        if (!qn.startsWith(schemaPrefix)) continue;
+        const tableName = qn.substring(schemaPrefix.length);
+        const t = this.index.getTable(qn);
+        const item = new vscode.CompletionItem(`"${tableName}"`, vscode.CompletionItemKind.Class);
+        if (t) item.detail = `${t.columns.length} columns`;
+        // replaceRangeDot covers `""` + the following `.` to avoid double-dot when editing in-place
+        if (replaceRangeDot) item.range = replaceRangeDot;
+        item.insertText = `"${tableName}".`;
+        item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest columns' };
+        schemaTableItems.push(item);
+      }
+      if (schemaTableItems.length > 0) return schemaTableItems;
+    }
+
+    // 1b. After `"table".(` or inside composite FK tuple `"table".("col", ` → column names
+    const tupleMatch = /(?:(?:"([^"]+)"|(\w+))\.)?(?:"([^"]+)"|(\w+))\.\([^)]*$/.exec(linePrefix);
+    if (tupleMatch) {
+      const schema = tupleMatch[1] ?? tupleMatch[2];
+      const tbl = tupleMatch[3] ?? tupleMatch[4]!;
+      const table = (schema ? this.index.getTable(`${schema}.${tbl}`) : undefined)
+        ?? this.index.getTable(tbl)
+        ?? this.index.getTable(`public.${tbl}`);
+      if (table) {
+        return table.columns.map((col) => {
+          const item = new vscode.CompletionItem(`"${col.name}"`, vscode.CompletionItemKind.Field);
+          item.detail = col.type;
           return item;
         });
       }
@@ -521,6 +593,37 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
           this.makeItem('brin',   'BRIN — large tables with natural physical ordering',  vscode.CompletionItemKind.EnumMember),
         ];
       }
+
+      // Content of the current bracket pair (after the last `[`)
+      const bracketContent = linePrefix.split('[').pop()!;
+
+      // Find the last `modify:` and `ref:` keyword positions so the innermost one wins.
+      // A line like `[ref: > table.col, modify: n|]` should trigger modify keys, not ref completions.
+      let lastModify = -1, lastRef = -1;
+      let _m: RegExpExecArray | null;
+      const modRe = /\bmodify\s*:/gi;
+      const refRe = /\bref\s*:/gi;
+      while ((_m = modRe.exec(bracketContent))) lastModify = _m.index;
+      while ((_m = refRe.exec(bracketContent))) lastRef = _m.index;
+
+      // Inside [modify: ...] → modify key=value completions (modify: is more recent than ref:)
+      if (lastModify >= 0 && lastModify > lastRef) {
+        return MODIFY_KEYS.map(({ label, doc, snippet }) => {
+          const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Property);
+          item.documentation = doc;
+          item.insertText = new vscode.SnippetString(snippet);
+          return item;
+        });
+      }
+
+      // Inside [ref: ...] → direction operator then table.column
+      if (lastRef >= 0) {
+        if (/(?:<>|[<>-])/.test(bracketContent.slice(lastRef))) {
+          return this.tableColumnItems(uri, replaceRange);
+        }
+        return this.operatorItems();
+      }
+
       const settings = block === 'indexes' ? INDEX_SETTINGS : COLUMN_SETTINGS;
       return settings.map((s) => {
         const item = new vscode.CompletionItem(s.label, s.kind ?? vscode.CompletionItemKind.Keyword);
@@ -577,10 +680,11 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       ];
     }
 
-    // 6. Inside Ref block or inline `Ref:` line → table.column + operators
-    const isRefLine = /(?:^|\s)ref\s*(?:(?:"[^"]+"|[\w]+)\s*)?:\s*/i.test(linePrefix);
+    // 6. Inside Ref block or inline `Ref [name]:` line → table.column + operators
+    // Anchored at start of line; name is optional and may be double-quoted.
+    const isRefLine = /^\s*[Rr]ef\b(?:\s+(?:"[^"]+"|[\w]+))?\s*:/.test(linePrefix);
     if (block === 'ref' || isRefLine) {
-      return this.refCompletions(linePrefix, uri);
+      return this.refCompletions(linePrefix, uri, replaceRange, replaceRangeDot);
     }
 
     // 7. Inside TableGroup → table names
@@ -640,8 +744,8 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       ];
     }
 
-    // Typing `Ref <name>` before the colon — don't suggest anything
-    if (/^\s*[Rr]ef\b/.test(linePrefix) && !/:/.test(linePrefix)) {
+    // Typing `Ref [name]` before the colon — suppress completions
+    if (/^\s*[Rr]ef\b/.test(linePrefix) && !linePrefix.includes(':')) {
       return [];
     }
 
@@ -662,33 +766,62 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       });
   }
 
-  private refCompletions(linePrefix: string, uri: vscode.Uri): vscode.CompletionItem[] {
-    // After operator → right-side table.column
-    if (/(?:<>|[<>-])\s*(?:"[^"]*"|[\w.])*$/.test(linePrefix)) {
-      return this.tableColumnItems(uri);
+  private refCompletions(linePrefix: string, uri: vscode.Uri, replaceRange?: vscode.Range, replaceRangeDot?: vscode.Range): vscode.CompletionItem[] {
+    // Right after an operator (nothing typed yet, or just an opening `"`) → schemas
+    if (/(?:<>|[<>-])\s*"?$/.test(linePrefix)) {
+      return this.schemaItems(uri, replaceRangeDot);
     }
-    // After `word.word` or `"word"."word"` with no operator → operators
-    if (/(?:"[^"]+"|[\w]+)\.(?:"[^"]*"|\w*)\s*$/.test(linePrefix) && !/(?:<>|[<>-])/.test(linePrefix)) {
-      return REF_OPERATORS.map(({ label, doc: d }) => {
-        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Operator);
-        item.documentation = d;
-        return item;
-      });
+    // After operator + partial identifier → full table.column list (graceful fallback)
+    if (/(?:<>|[<>-])\s*(?:"[^"]*"|[\w.])+$/.test(linePrefix)) {
+      return this.tableColumnItems(uri, replaceRange);
     }
-    return this.tableColumnItems(uri);
+    // Has a complete `table.col` ref (no operator yet) → offer operators
+    if (/(?:"[^"]+"|[\w]+)\.(?:"[^"]*"|\w+)\s*$/.test(linePrefix) && !/(?:<>|[<>-])/.test(linePrefix)) {
+      return this.operatorItems();
+    }
+    // Fresh start after colon (possibly with opening `"`) → schemas
+    return this.schemaItems(uri, replaceRangeDot);
   }
 
-  private tableColumnItems(uri: vscode.Uri): vscode.CompletionItem[] {
+  private schemaItems(uri: vscode.Uri, replaceRange?: vscode.Range): vscode.CompletionItem[] {
+    return this.index.getSchemaNames(uri).map((schema) => {
+      const item = new vscode.CompletionItem(`"${schema}"`, vscode.CompletionItemKind.Module);
+      item.detail = 'schema';
+      // Insert with trailing `.` so dotMatch fires for table completions
+      item.insertText = `"${schema}".`;
+      item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest tables' };
+      if (replaceRange) item.range = replaceRange;
+      return item;
+    });
+  }
+
+  private operatorItems(): vscode.CompletionItem[] {
+    return REF_OPERATORS.map(({ label, doc: d }) => {
+      const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Operator);
+      item.documentation = d;
+      item.insertText = `${label} `;
+      // After picking an operator, auto-show schemas for the right-hand side
+      item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest' };
+      return item;
+    });
+  }
+
+  private tableColumnItems(uri: vscode.Uri, replaceRange?: vscode.Range): vscode.CompletionItem[] {
     const items: vscode.CompletionItem[] = [];
+    const seen = new Set<string>();
     for (const name of this.index.getVisibleTableNames(uri)) {
       const table = this.index.getTable(name);
       if (!table) continue;
       for (const col of table.columns) {
-        const item = new vscode.CompletionItem(
-          `${name}.${col.name}`,
-          vscode.CompletionItemKind.Reference,
-        );
+        // Use fully-qualified double-quoted form: "schema"."table"."column"
+        const label = `"${table.schemaName}"."${table.tableName}"."${col.name}"`;
+        if (seen.has(label)) continue;
+        seen.add(label);
+        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Reference);
         item.detail = col.type;
+        item.documentation = [col.pk ? 'PK' : '', col.notNull ? 'NOT NULL' : '', col.unique ? 'UNIQUE' : '']
+          .filter(Boolean).join(', ') || undefined;
+        if (replaceRange) item.range = replaceRange;
         items.push(item);
       }
     }
@@ -735,7 +868,7 @@ export function registerLspProviders(
     vscode.languages.registerCompletionItemProvider(
       'dbmlx',
       new DbmlxCompletionProvider(index),
-      '.', '[', ',', '"', '!',
+      '.', '[', ',', '"', '!', ':', '>', '<', '-',
     ),
     vscode.languages.registerDocumentFormattingEditProvider(
       'dbmlx',

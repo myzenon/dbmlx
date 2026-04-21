@@ -61,28 +61,7 @@ export function App(_props: AppProps) {
   const individuallyHidden = useAppStore((s) => s.hiddenTables);
   const tableColors = useAppStore((s) => s.tableColors);
   const selection = useAppStore((s) => s.selection);
-
-  useEffect(() => {
-    if (!ready) return;
-    const missing = schema.tables.filter((t) => !positions.has(t.name));
-    if (missing.length === 0) return;
-    const sizeOf = (name: QualifiedName) => {
-      const t = schema.tables.find((x) => x.name === name);
-      return estimateSize(t?.columns.length ?? 0);
-    };
-    const layoutTargets = positions.size === 0 ? schema.tables : missing;
-    const laidOut = autoLayout(layoutTargets, schema.refs, sizeOf, store.getState().layoutAlgorithm, store.getState().showGroupBoundary);
-    const entries: Array<[QualifiedName, { x: number; y: number }]> = [];
-    for (const [name, pos] of laidOut) entries.push([name, pos]);
-    if (entries.length > 0) store.getState().setPositionsBatch(entries);
-  // positions intentionally in deps: when resetLayout clears them, this must re-fire
-  }, [schema, ready, positions]);
-
-  const columnCountByTable = useMemo(() => {
-    const m = new Map<QualifiedName, number>();
-    for (const t of schema.tables) m.set(t.name, t.columns.length);
-    return m;
-  }, [schema]);
+  const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
 
   const tablesByName = useMemo(() => {
     const m = new Map<QualifiedName, Table>();
@@ -105,6 +84,45 @@ export function App(_props: AppProps) {
     return m;
   }, [schema]);
 
+  useEffect(() => {
+    if (!ready) return;
+    // Compute which tables are invisible (hidden groups, collapsed groups, individually hidden).
+    // Auto layout should only place visible tables so hidden ones don't create phantom gaps.
+    const excludedFromLayout = new Set<QualifiedName>(individuallyHidden);
+    for (const g of schema.groups) {
+      const st = groupState[g.name];
+      if (st?.hidden || st?.collapsed) {
+        for (const t of g.tables) excludedFromLayout.add(t);
+      }
+    }
+    const visibleTables = schema.tables.filter((t) => !excludedFromLayout.has(t.name));
+    const missing = visibleTables.filter((t) => !positions.has(t.name));
+    if (missing.length === 0) return;
+    const sizeOf = (name: QualifiedName) => {
+      const t = schema.tables.find((x) => x.name === name);
+      if (!t) return estimateSize(0);
+      if (showOnlyPkFk) {
+        const fkCols = fkColumnsByTable.get(name) ?? new Set<string>();
+        const visibleCols = t.columns.filter((c) => c.pk || fkCols.has(c.name));
+        return { width: estimateSize(0).width, height: tableActualHeight({ ...t, columns: visibleCols }) };
+      }
+      return { width: estimateSize(0).width, height: tableActualHeight(t) };
+    };
+    const layoutTargets = positions.size === 0 ? visibleTables : missing;
+    const laidOut = autoLayout(layoutTargets, schema.refs, sizeOf, store.getState().layoutAlgorithm, store.getState().showGroupBoundary);
+    const entries: Array<[QualifiedName, { x: number; y: number }]> = [];
+    for (const [name, pos] of laidOut) entries.push([name, pos]);
+    if (entries.length > 0) store.getState().setPositionsBatch(entries);
+  // positions intentionally in deps: when resetLayout clears them, this must re-fire
+  }, [schema, ready, positions, showOnlyPkFk, fkColumnsByTable, individuallyHidden, groupState]);
+
+  const getRenderedHeight = (t: Table): number => {
+    if (!showOnlyPkFk) return tableActualHeight(t);
+    const fkCols = fkColumnsByTable.get(t.name) ?? new Set<string>();
+    const visibleCols = t.columns.filter((c) => c.pk || fkCols.has(c.name));
+    return tableActualHeight({ ...t, columns: visibleCols });
+  };
+
   const derived = useMemo(() => {
     const hiddenTables = new Set<QualifiedName>(individuallyHidden);
     const collapsedTables = new Set<QualifiedName>();
@@ -126,7 +144,7 @@ export function App(_props: AppProps) {
           if (!pos) continue;
           const table = schema.tables.find((x) => x.name === t);
           const w = estimateSize(table?.columns.length ?? 0).width;
-          const h = table ? tableActualHeight(table) : estimateSize(0).height;
+          const h = table ? getRenderedHeight(table) : estimateSize(0).height;
           if (pos.x < minX) minX = pos.x;
           if (pos.y < minY) minY = pos.y;
           if (pos.x + w > maxX) maxX = pos.x + w;
@@ -202,7 +220,7 @@ export function App(_props: AppProps) {
     }
 
     return { hiddenTables, collapsedTables, collapsedNodes, containers, effectiveRefs };
-  }, [schema, positions, groupState, individuallyHidden]);
+  }, [schema, positions, groupState, individuallyHidden, showOnlyPkFk, fkColumnsByTable]);
 
   const spatialIndex = useMemo(() => {
     const idx = new SpatialIndex();
@@ -210,14 +228,14 @@ export function App(_props: AppProps) {
       if (derived.hiddenTables.has(t.name) || derived.collapsedTables.has(t.name)) continue;
       const pos = positions.get(t.name);
       if (!pos) continue;
-      const size = estimateSize(t.columns.length);
+      const size = { width: estimateSize(t.columns.length).width, height: getRenderedHeight(t) };
       idx.insert(t.name, { x: pos.x, y: pos.y, w: size.width, h: size.height });
     }
     for (const g of derived.collapsedNodes) {
       idx.insert(groupId(g.name), { x: g.x, y: g.y, w: g.w, h: g.h });
     }
     return idx;
-  }, [schema, positions, derived]);
+  }, [schema, positions, derived, showOnlyPkFk, fkColumnsByTable]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewportRect, setViewportRect] = useState({ w: 0, h: 0 });
@@ -419,7 +437,7 @@ export function App(_props: AppProps) {
       if (derived.hiddenTables.has(t.name) || derived.collapsedTables.has(t.name)) continue;
       const pos = positions.get(t.name);
       if (!pos) continue;
-      const size = estimateSize(t.columns.length);
+      const size = { width: estimateSize(t.columns.length).width, height: getRenderedHeight(t) };
       if (pos.x < minX) minX = pos.x;
       if (pos.y < minY) minY = pos.y;
       if (pos.x + size.width > maxX) maxX = pos.x + size.width;
@@ -440,7 +458,7 @@ export function App(_props: AppProps) {
     if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 800, h: 600 };
     const P = 400;
     return { x: Math.round(minX - P), y: Math.round(minY - P), w: Math.round(maxX - minX + P * 2), h: Math.round(maxY - minY + P * 2) };
-  }, [schema, positions, derived]);
+  }, [schema, positions, derived, showOnlyPkFk, fkColumnsByTable]);
 
   const lod = lodForZoom(viewport.zoom);
   const worldTransform = `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`;
@@ -469,6 +487,8 @@ export function App(_props: AppProps) {
               tablesByName={tablesByName}
               groupSizes={derived.collapsedNodes}
               worldBbox={worldBbox}
+              showOnlyPkFk={showOnlyPkFk}
+              fkColumnsByTable={fkColumnsByTable}
             />
             {renderedTables.map((t) => {
               if (visibleNames && !visibleNames.has(t.name)) return null;

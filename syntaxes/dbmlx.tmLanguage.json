@@ -69,6 +69,24 @@
       "patterns": [
         { "include": "#comment" },
         {
+          "name": "markup.inserted.dbmlx",
+          "match": "\\badd\\b"
+        },
+        {
+          "name": "markup.deleted.dbmlx",
+          "match": "\\bdrop\\b"
+        },
+        {
+          "match": "\\b(modify)\\s*:",
+          "captures": {
+            "1": { "name": "markup.changed.dbmlx" }
+          }
+        },
+        {
+          "name": "variable.other.modify-key.dbmlx",
+          "match": "\\b(name|type|default|pk|not_null|unique|increment)(?=\\s*=)"
+        },
+        {
           "name": "storage.modifier.dbmlx",
           "match": "\\b(pk|primary key|not null|null|unique|increment|default|note|ref)\\b"
         },
@@ -107,7 +125,8 @@
         { "include": "#comment" },
         { "include": "#indexes-block" },
         { "include": "#note-statement" },
-        { "include": "#column-definition" }
+        { "include": "#column-definition" },
+        { "include": "#column-settings" }
       ]
     },
     "column-definition": {
@@ -193,16 +212,57 @@
       "name": "keyword.operator.ref.dbmlx",
       "match": "<>|[<>-]"
     },
+    "ref-qualified-name": {
+      "patterns": [
+        {
+          "comment": "3-part with composite columns: schema.table.(col1, col2)",
+          "match": "(\"[^\"]+\"|\\w+)\\.(\"[^\"]+\"|\\w+)\\.\\(([^)]*)\\)",
+          "captures": {
+            "1": { "name": "entity.name.namespace.dbmlx" },
+            "2": { "name": "entity.name.type.table.dbmlx" },
+            "3": { "name": "variable.other.column.dbmlx" }
+          }
+        },
+        {
+          "comment": "3-part: schema.table.column",
+          "match": "(\"[^\"]+\"|\\w+)\\.(\"[^\"]+\"|\\w+)\\.(\"[^\"]+\"|\\w+)",
+          "captures": {
+            "1": { "name": "entity.name.namespace.dbmlx" },
+            "2": { "name": "entity.name.type.table.dbmlx" },
+            "3": { "name": "variable.other.column.dbmlx" }
+          }
+        },
+        {
+          "comment": "2-part with composite columns: table.(col1, col2)",
+          "match": "(\"[^\"]+\"|\\w+)\\.\\(([^)]*)\\)",
+          "captures": {
+            "1": { "name": "entity.name.type.table.dbmlx" },
+            "2": { "name": "variable.other.column.dbmlx" }
+          }
+        },
+        {
+          "comment": "2-part: table.column",
+          "match": "(\"[^\"]+\"|\\w+)\\.(\"[^\"]+\"|\\w+)",
+          "captures": {
+            "1": { "name": "entity.name.type.table.dbmlx" },
+            "2": { "name": "variable.other.column.dbmlx" }
+          }
+        }
+      ]
+    },
     "ref-inline": {
       "name": "meta.ref.inline.dbmlx",
-      "match": "(?i)\\b(Ref)\\s*(?:((?:\"[^\"]+\"|\\w+))\\s*)?:\\s*((?:\"[^\"]+\"|\\w+)(?:\\.(?:\"[^\"]+\"|\\w+))*)\\s*(<>|[<>-])\\s*((?:\"[^\"]+\"|\\w+)(?:\\.(?:\"[^\"]+\"|\\w+))*)",
-      "captures": {
+      "begin": "(?i)\\b(Ref)\\b\\s*(?:(\"[^\"]+\"|\\w+)\\s*)?:",
+      "beginCaptures": {
         "1": { "name": "keyword.other.ref.dbmlx" },
-        "2": { "name": "entity.name.ref.dbmlx" },
-        "3": { "name": "variable.other.table-column.dbmlx" },
-        "4": { "name": "keyword.operator.ref.dbmlx" },
-        "5": { "name": "variable.other.table-column.dbmlx" }
-      }
+        "2": { "name": "entity.name.ref.dbmlx" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#ref-qualified-name" },
+        { "include": "#ref-operator" }
+      ]
     },
     "ref-block": {
       "name": "meta.ref.block.dbmlx",
@@ -218,11 +278,8 @@
       },
       "patterns": [
         { "include": "#comment" },
-        { "include": "#ref-operator" },
-        {
-          "name": "variable.other.table-column.dbmlx",
-          "match": "(?:\"[^\"]+\"|\\w+)(?:\\.(?:\"[^\"]+\"|\\w+))*"
-        }
+        { "include": "#ref-qualified-name" },
+        { "include": "#ref-operator" }
       ]
     },
     "project-block": {

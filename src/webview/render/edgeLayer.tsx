@@ -1,5 +1,5 @@
 import type { QualifiedName, Ref, Schema } from '../../shared/types';
-import { columnCenterY, estimateSize } from '../layout/autoLayout';
+import { colRowY, estimateSize, tableActualHeight, TABLE_ROW_H } from '../layout/autoLayout';
 import { routeRefs } from './edgeRouter';
 import type { Bbox } from './spatialIndex';
 import { useAppStore } from '../state/store';
@@ -19,11 +19,13 @@ interface EdgeLayerProps {
   tablesByName: Map<QualifiedName, Schema['tables'][number]>;
   groupSizes?: GroupSize[];
   worldBbox: { x: number; y: number; w: number; h: number };
+  showOnlyPkFk: boolean;
+  fkColumnsByTable: Map<QualifiedName, Set<string>>;
 }
 
 const GROUP_PREFIX = '__group__:';
 
-export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox }: EdgeLayerProps) {
+export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable }: EdgeLayerProps) {
   const edgeOffsets = useAppStore((s) => s.edgeOffsets);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
@@ -40,16 +42,29 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
     const pos = positions.get(name);
     if (!pos) return undefined;
     const t = tablesByName.get(name);
-    const size = estimateSize(t?.columns.length ?? 0);
-    return { x: pos.x, y: pos.y, w: size.width, h: size.height };
+    const w = estimateSize(t?.columns.length ?? 0).width;
+    let h: number;
+    if (t) {
+      const fkCols = fkColumnsByTable.get(name) ?? new Set<string>();
+      const visibleCols = showOnlyPkFk ? t.columns.filter((c) => c.pk || fkCols.has(c.name)) : t.columns;
+      h = tableActualHeight({ ...t, columns: visibleCols });
+    } else {
+      h = estimateSize(0).height;
+    }
+    return { x: pos.x, y: pos.y, w, h };
   };
 
   const columnY = (tableName: QualifiedName, column: string): number | undefined => {
     const t = tablesByName.get(tableName);
     if (!t) return undefined;
-    const idx = t.columns.findIndex((c) => c.name === column);
+    const fkCols = fkColumnsByTable.get(tableName) ?? new Set<string>();
+    const visibleCols = showOnlyPkFk ? t.columns.filter((c) => c.pk || fkCols.has(c.name)) : t.columns;
+    const idx = visibleCols.findIndex((c) => c.name === column);
     if (idx < 0) return undefined;
-    return columnCenterY(idx);
+    const virtualT = { ...t, columns: visibleCols };
+    // For modify columns, point to center of the "after" row (second of the two rows)
+    const isModify = t.columnChanges?.[visibleCols[idx]!.name]?.kind === 'modify';
+    return colRowY(virtualT, idx) + (isModify ? TABLE_ROW_H * 1.5 : TABLE_ROW_H / 2);
   };
 
   const routes = routeRefs(refs, bboxOf, columnY, (id) => edgeOffsets.get(id));

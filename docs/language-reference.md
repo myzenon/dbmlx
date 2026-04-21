@@ -89,6 +89,8 @@ Table orders {
 | `-` | One-to-one |
 | `<>` | Many-to-many |
 
+**Completions**: Typing `Ref "name": ` triggers schema-name completions automatically. Picking a schema immediately suggests tables; picking a table suggests columns; picking a column suggests operators; picking an operator suggests the right-side schema — the full chain triggers without `Ctrl+Space`.
+
 ---
 
 ## 3. Enums

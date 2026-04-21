@@ -284,8 +284,18 @@ export function tableActualHeight(t: Table): number {
   return h;
 }
 
-/** Y offset (from table top) for the vertical center of a column row at `index`. */
+/** Y offset (from table top) for the vertical center of a column row at `index`.
+ *  Assumes uniform row height — use colRowY when you have a Table object. */
 export function columnCenterY(index: number): number {
-  // 4px top-padding of .ddd-table__cols before rows start.
   return TABLE_HEADER_H + 4 + index * TABLE_ROW_H + TABLE_ROW_H / 2;
+}
+
+/** Y offset (from table top) of the top of the column row at `colIndex`.
+ *  Accounts for [modify] columns occupying two rows. */
+export function colRowY(t: Table, colIndex: number): number {
+  let y = TABLE_HEADER_H + 4;
+  for (let i = 0; i < colIndex; i++) {
+    y += t.columnChanges?.[t.columns[i]!.name]?.kind === 'modify' ? TABLE_ROW_H * 2 : TABLE_ROW_H;
+  }
+  return y;
 }
