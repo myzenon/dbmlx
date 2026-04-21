@@ -527,6 +527,25 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
 .ddd-table__change-badge--add  { background: var(--ddd-mig-add); }
 .ddd-table__change-badge--drop { background: var(--ddd-mig-drop); }
 
+/* MODIFY table — amber border + two-row name diff in header */
+.ddd-table--modify {
+  border-top: 3px solid var(--ddd-mig-modify) !important;
+  box-shadow: 0 0 0 1.5px var(--ddd-mig-modify);
+}
+.ddd-table--modify .ddd-table__header {
+  background: rgba(255, 152, 0, 0.08) !important;
+}
+.ddd-table__name--before {
+  text-decoration: line-through;
+  opacity: 0.45;
+  color: var(--ddd-fg-muted);
+  margin-right: 4px;
+}
+.ddd-table__name--after {
+  color: var(--ddd-mig-modify);
+  font-weight: 700;
+}
+
 /* ADD column — green tint */
 .ddd-table__col.ddd-col--add {
   background: rgba(76, 175, 80, 0.12);

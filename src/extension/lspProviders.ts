@@ -54,8 +54,8 @@ const DIFF_ANNOTATION_HOVER: Record<string, { title: string; body: string }> = {
     body: 'Marks this column **or table** as **dropped** in the current migration.\n\n**Column:** Renders with a red strikethrough accent.\n```dbmlx\nlegacy_id int [drop]\n```\n\n**Table:** Renders with a red border, dimmed columns, and `DROP` badge.\n```dbmlx\nTable old_sessions [drop] {\n  id int [pk]\n}\n```',
   },
   modify: {
-    title: 'modify — Modified Column',
-    body: 'Marks this column as **modified** in the current migration.\n\nWrite the column with its **new** name and type. Use `name=` and/or `type=` to record the **original** values before migration.\n\n```dbmlx\n// renamed + retyped: write the new state first\nuser_login text [modify: name="username", type="varchar(50)"]\n\n// type change only\nemail varchar(255) [modify: type="varchar(100)"]\n```\n\nRefs and indexes reference the new column name. The diagram renders the original (strikethrough) above and the new value below.',
+    title: 'modify — Modified Column or Renamed Table',
+    body: 'Marks this **column** as modified, or a **table** as renamed, in the current migration.\n\n**Column:** Write the new name/type on the line; record originals in `modify:`.\n```dbmlx\nuser_login text [modify: name="username", type="varchar(50)"]\nemail varchar(255) [modify: type="varchar(100)"]\n```\n\n**Table rename:** Write the new table name; record the old name with `name=`.\n```dbmlx\nTable new_users [modify: name="users"] {\n  id int [pk]\n}\n```\nRenders with an amber border and a before→after name diff in the header.',
   },
 };
 
@@ -383,9 +383,10 @@ const TOPLEVEL_SNIPPETS: Array<{ label: string; snippet: string; doc: string; co
   { label: 'DiagramView', snippet: 'DiagramView ${1:name} {\n\tTables { * }\n}', doc: 'Define a named filterable view of the diagram.' },
 ];
 
-const TABLE_HEADER_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind }> = [
+const TABLE_HEADER_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind; snippet?: string }> = [
   { label: 'add',  doc: 'Migration diff — this entire table is being created in this migration. Renders with a green border and +NEW badge.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'drop', doc: 'Migration diff — this entire table is being dropped in this migration. Renders with a red border, dimmed columns, and DROP badge.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'modify: ', doc: 'Migration diff — table is being renamed. Write the NEW name on the Table line, record the old name with name="old_name". Renders with an amber border and a before→after name diff in the header.', kind: vscode.CompletionItemKind.EnumMember, snippet: 'modify: name="${1:old_name}"' },
   { label: 'headercolor: ', doc: 'Custom header color for this table in the diagram.', kind: vscode.CompletionItemKind.Property },
 ];
 

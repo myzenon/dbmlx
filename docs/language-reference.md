@@ -284,7 +284,7 @@ The before/after diff display uses these values:
 
 ### Table-level annotations
 
-`[add]` and `[drop]` can also appear on the `Table` declaration line to mark an entire table as new or removed:
+`[add]`, `[drop]`, and `[modify: name="old"]` can appear on the `Table` declaration line:
 
 ```dbmlx
 Table audit_log [add] {
@@ -300,12 +300,21 @@ Table old_sessions [drop] {
   user_id  int
 }
 // ↑ entire table is being removed — red border, dimmed columns, DROP badge
+
+Table new_users [modify: name="users"] {
+  id    int           [pk]
+  email varchar(255)
+}
+// ↑ table is being renamed — amber border, old name (strikethrough) + new name (amber) in header
+// Write the NEW name on the Table line; record the old name with name="old_name"
+// Refs and indexes reference the new name
 ```
 
 | Annotation | Meaning | Visual |
 |---|---|---|
 | `Table name [add] { ... }` | Entire table being created in this migration | Green border, `+NEW` badge |
 | `Table name [drop] { ... }` | Entire table being removed in this migration | Red border, dimmed, `DROP` badge |
+| `Table new_name [modify: name="old_name"] { ... }` | Table is being renamed | Amber border, before→after name diff in header |
 
 - Annotations are stripped before passing to the underlying DBML parser — they never cause parse errors.
 - `[add]` and `[drop]` can be combined with standard column settings: `[not null, add]`, `[pk, drop]`.

@@ -78,7 +78,8 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
   const changes = table.columnChanges ?? {};
   const changeCount = Object.keys(changes).length;
   const tableChangeClass = table.tableChange === 'add' ? ' ddd-table--add'
-    : table.tableChange === 'drop' ? ' ddd-table--drop' : '';
+    : table.tableChange === 'drop' ? ' ddd-table--drop'
+    : table.tableChange === 'modify' ? ' ddd-table--modify' : '';
 
   return (
     <div
@@ -92,7 +93,7 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
         borderTopColor: color ?? undefined,
       }}
     >
-      <TableHeader table={table} configurable headerStyle={headerStyle} changeCount={changeCount} tableChange={table.tableChange} />
+      <TableHeader table={table} configurable headerStyle={headerStyle} changeCount={changeCount} tableChange={table.tableChange} tableFromName={table.tableFromName} />
       <ul class="ddd-table__cols">
         {visibleCols.map((c) => (
           <ColumnRow key={c.name} col={c} isFk={fkColumns?.has(c.name) ?? false} change={changes[c.name]} />
@@ -102,7 +103,7 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
   );
 }
 
-function TableHeader({ table, configurable, headerStyle, changeCount, tableChange }: { table: Table; configurable?: boolean; headerStyle?: Record<string, string>; changeCount?: number; tableChange?: 'add' | 'drop' }) {
+function TableHeader({ table, configurable, headerStyle, changeCount, tableChange, tableFromName }: { table: Table; configurable?: boolean; headerStyle?: Record<string, string>; changeCount?: number; tableChange?: 'add' | 'drop' | 'modify'; tableFromName?: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
   const existing = store.getState().tableColors.get(table.name);
 
@@ -143,7 +144,14 @@ function TableHeader({ table, configurable, headerStyle, changeCount, tableChang
         {changeCount ? <span class="ddd-table__change-badge" title={`${changeCount} migration change${changeCount > 1 ? 's' : ''}`}>{changeCount}</span> : null}
         <span class="ddd-table__name-wrap">
           {table.schemaName !== 'public' ? <span class="ddd-table__schema">{table.schemaName}.</span> : null}
-          <span class="ddd-table__name">{table.tableName}</span>
+          {tableChange === 'modify' && tableFromName ? (
+            <>
+              <span class="ddd-table__name ddd-table__name--before" title={`Renamed from ${tableFromName}`}>{tableFromName}</span>
+              <span class="ddd-table__name ddd-table__name--after">{table.tableName}</span>
+            </>
+          ) : (
+            <span class="ddd-table__name">{table.tableName}</span>
+          )}
           {table.note ? <TableNoteIcon note={table.note} name={table.name} /> : null}
         </span>
       </span>

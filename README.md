@@ -73,13 +73,16 @@ Table orders {
 - `[drop]` — rendered with a red strikethrough (column) or red border + `DROP` badge (table)
 - `[modify: ...]` — two-row display: original (strikethrough) → new (amber). All keys are optional.
 
-`[add]` and `[drop]` work on the `Table` declaration line too, to mark entire tables as added or removed:
+`[add]`, `[drop]`, and `[modify: name="old"]` work on the `Table` declaration line too:
 
 ```dbmlx
-Table audit_log [add] {   // new table — green border
+Table audit_log [add] {                    // new table — green border + +NEW badge
   id int [pk]
 }
-Table old_cache [drop] {  // removed table — red border, dimmed
+Table old_cache [drop] {                   // removed table — red border + DROP badge
+  id int [pk]
+}
+Table new_users [modify: name="users"] {   // renamed table — amber border, old→new name in header
   id int [pk]
 }
 ```

@@ -261,7 +261,7 @@ export function generateSvg(state: AppState): string {
     const gclr = t.groupName ? (grpState[t.groupName]?.color ?? hslColor(t.groupName)) : undefined;
     const tclr = tableColors.get(t.name) ?? gclr;
     const tableAnn = t.tableChange;
-    const tableAnnColor = tableAnn === 'add' ? migAdd : tableAnn === 'drop' ? migDrop : null;
+    const tableAnnColor = tableAnn === 'add' ? migAdd : tableAnn === 'drop' ? migDrop : tableAnn === 'modify' ? migModify : null;
     const hdrBase = tclr ? withAlpha(tclr, dark ? 0.22 : 0.15) : hdrFill;
     const hdr = tableAnnColor ? withAlpha(tableAnnColor, 0.10) : hdrBase;
     const accent = tableAnnColor ?? tclr ?? tblBorder;
@@ -355,7 +355,7 @@ export function generateSvg(state: AppState): string {
     // Badges are rendered LEFT of the name so they're never clipped by long table names
     const by = y + TABLE_HEADER_H - 14;
     let nameX = x + 8;
-    if (tableAnn) {
+    if (tableAnn === 'add' || tableAnn === 'drop') {
       const badgeLabel = tableAnn === 'add' ? '+NEW' : 'DROP';
       const bw = tableAnn === 'add' ? 28 : 26;
       L.push(`<rect x="${nameX}" y="${by - 7}" width="${bw}" height="14" rx="7" fill="${tableAnnColor}"/>`);
@@ -367,7 +367,15 @@ export function generateSvg(state: AppState): string {
       L.push(`<text x="${nameX + 7}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="white" text-anchor="middle">${changeCount}</text>`);
       nameX += 20;
     }
-    L.push(`<text x="${nameX}" y="${y + TABLE_HEADER_H - 8}" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${fg}"${nameDecoration}>${esc(display)}</text>`);
+    if (tableAnn === 'modify' && t.tableFromName) {
+      const fromDisplay = t.schemaName !== 'public' ? `${t.schemaName}.${t.tableFromName}` : t.tableFromName;
+      // Before name: muted strikethrough, anchored at top of header area
+      L.push(`<text x="${nameX}" y="${y + TABLE_HEADER_H - 14}" font-family="system-ui,sans-serif" font-size="11" fill="${fgMuted}" opacity="0.5" text-decoration="line-through">${esc(fromDisplay)}</text>`);
+      // After name: amber bold, nudged right+down so it partially overlaps but stays readable
+      L.push(`<text x="${nameX + 10}" y="${y + TABLE_HEADER_H - 3}" font-family="system-ui,sans-serif" font-size="12" font-weight="700" fill="${migModify}">${esc(display)}</text>`);
+    } else {
+      L.push(`<text x="${nameX}" y="${y + TABLE_HEADER_H - 8}" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${fg}"${nameDecoration}>${esc(display)}</text>`);
+    }
     L.push('</g>');
   }
 

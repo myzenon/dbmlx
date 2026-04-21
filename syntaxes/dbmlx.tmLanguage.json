@@ -118,7 +118,8 @@
           "name": "meta.table-settings.dbmlx",
           "patterns": [
             { "name": "markup.inserted.dbmlx", "match": "\\badd\\b" },
-            { "name": "markup.deleted.dbmlx", "match": "\\bdrop\\b" }
+            { "name": "markup.deleted.dbmlx", "match": "\\bdrop\\b" },
+            { "name": "keyword.other.modify.dbmlx", "match": "\\bmodify\\b" }
           ]
         },
         "6": { "name": "punctuation.section.block.begin.dbmlx" }

@@ -26,11 +26,11 @@ export function stripDbmlxExtensions(source: string): string {
 
 export function parseDbmlx(source: string): { schema: Schema; error: null } | { schema: null; error: ParseError } {
   const { stripped: noViews, views } = extractDiagramViews(source);
-  const { stripped, changes: migrationChanges, tableChanges } = extractMigrationChanges(noViews);
+  const { stripped, changes: migrationChanges, tableChanges, tableFromNames } = extractMigrationChanges(noViews);
   try {
     const db = Parser.parse(stripped, 'dbmlv2');
     const exported = db.export() as unknown as ExportedDatabase;
-    const schema = mapExportedToSchema(exported, migrationChanges, tableChanges);
+    const schema = mapExportedToSchema(exported, migrationChanges, tableChanges, tableFromNames);
     schema.views = views;
     return { schema, error: null };
   } catch (err) {
@@ -80,10 +80,12 @@ function parseDiagramViewBody(name: string, body: string): DiagramView {
 function extractMigrationChanges(source: string): {
   stripped: string;
   changes: Map<string, Map<string, ColumnChange>>;
-  tableChanges: Map<string, 'add' | 'drop'>;
+  tableChanges: Map<string, 'add' | 'drop' | 'modify'>;
+  tableFromNames: Map<string, string>;
 } {
   const changes = new Map<string, Map<string, ColumnChange>>();
-  const tableChanges = new Map<string, 'add' | 'drop'>();
+  const tableChanges = new Map<string, 'add' | 'drop' | 'modify'>();
+  const tableFromNames = new Map<string, string>();
   const lines = source.split('\n');
   const outLines: string[] = [];
 
@@ -110,12 +112,19 @@ function extractMigrationChanges(source: string): {
       isTableHeader = true;
       tableBodyDepth = braceDepth + opens;
       if (!changes.has(currentTableRawName)) changes.set(currentTableRawName, new Map());
-      // Detect [add] / [drop] on the table header line (settings bracket before `{`)
+      // Detect [add] / [drop] / [modify: name="old"] on the table header line (before `{`)
       const headerBracket = /\[([^\]]*)\]/.exec(line.replace(/\{[^}]*$/, ''));
       if (headerBracket) {
         const inner = headerBracket[1]!;
-        if (/\badd\b/i.test(inner)) tableChanges.set(currentTableRawName, 'add');
-        else if (/\bdrop\b/i.test(inner)) tableChanges.set(currentTableRawName, 'drop');
+        if (/\badd\b/i.test(inner)) {
+          tableChanges.set(currentTableRawName, 'add');
+        } else if (/\bdrop\b/i.test(inner)) {
+          tableChanges.set(currentTableRawName, 'drop');
+        } else if (/\bmodify\s*:/i.test(inner)) {
+          tableChanges.set(currentTableRawName, 'modify');
+          const fromName = /\bname\s*=\s*"([^"]*)"/.exec(inner)?.[1];
+          if (fromName) tableFromNames.set(currentTableRawName, fromName);
+        }
       }
     }
 
@@ -124,12 +133,16 @@ function extractMigrationChanges(source: string): {
 
     let processedLine = line;
 
-    // Strip [add] / [drop] from table header so @dbml/core doesn't choke on them
+    // Strip [add] / [drop] / [modify: ...] from table header so @dbml/core doesn't choke on them
     if (isTableHeader && tableChanges.has(currentTableRawName)) {
-      const kind = tableChanges.get(currentTableRawName)!;
       processedLine = processedLine.replace(/\[([^\]]*)\]/, (_m, content: string) => {
-        const rest = content.split(',').map((s: string) => s.trim()).filter((s: string) => s.toLowerCase() !== kind).join(', ');
-        return rest ? `[${rest}]` : '';
+        const KV = /\w+\s*=\s*(?:"[^"]*"|true|false)/;
+        const NEXT_KV = /(?=\w+\s*=\s*(?:"|true|false))/;
+        const cleaned = content
+          .replace(new RegExp(`\\s*\\bmodify:\\s*(?:${KV.source}(?:\\s*,\\s*${NEXT_KV.source})?)*\\s*`, 'gi'), '')
+          .split(',').map((s: string) => s.trim()).filter((s: string) => !/^(add|drop)$/i.test(s)).join(', ')
+          .replace(/,\s*,/g, ',').replace(/^\s*,\s*/, '').replace(/\s*,\s*$/, '').trim();
+        return cleaned ? `[${cleaned}]` : '';
       }).trimEnd();
     }
     if (inTable && braceDepth === tableBodyDepth) {
@@ -197,7 +210,7 @@ function extractMigrationChanges(source: string): {
     outLines.push(processedLine);
   }
 
-  return { stripped: outLines.join('\n'), changes, tableChanges };
+  return { stripped: outLines.join('\n'), changes, tableChanges, tableFromNames };
 }
 
 function toParseError(err: unknown): ParseError {
@@ -297,7 +310,7 @@ function qualify(schemaName: string | null | undefined, tableName: string): Qual
   return `${s && s.length > 0 ? s : 'public'}.${t}`;
 }
 
-function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string, Map<string, ColumnChange>>, tableAnnotations?: Map<string, 'add' | 'drop'>): Schema {
+function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string, Map<string, ColumnChange>>, tableAnnotations?: Map<string, 'add' | 'drop' | 'modify'>, tableFromNames?: Map<string, string>): Schema {
   const tables: Table[] = [];
   const refs: Ref[] = [];
   const groups: TableGroup[] = [];
@@ -344,6 +357,7 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
         return pkIndexCols.has(col.name) ? { ...col, pk: true } : col;
       });
       const tableChange = tableAnnotations?.get(cleanName);
+      const tableFromName = tableFromNames?.get(cleanName);
       tables.push({
         name: qn,
         schemaName,
@@ -353,6 +367,7 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
         groupName: tableToGroup.get(qn) ?? null,
         columnChanges,
         ...(tableChange ? { tableChange } : {}),
+        ...(tableFromName ? { tableFromName } : {}),
       });
     }
 
