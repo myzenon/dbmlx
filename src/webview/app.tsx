@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { store, useAppStore } from './state/store';
+import { postToHost } from './vscode';
 import { autoLayout, estimateSize, tableActualHeight } from './layout/autoLayout';
 import { TableNode } from './render/tableNode';
 import { EdgeLayer } from './render/edgeLayer';
@@ -62,6 +63,7 @@ export function App(_props: AppProps) {
   const tableColors = useAppStore((s) => s.tableColors);
   const selection = useAppStore((s) => s.selection);
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
+  const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
   const tablesByName = useMemo(() => {
     const m = new Map<QualifiedName, Table>();
@@ -83,6 +85,21 @@ export function App(_props: AppProps) {
     }
     return m;
   }, [schema]);
+
+  // Persist view toggles to layout file whenever they change (skip on initial mount before layout is loaded).
+  useEffect(() => {
+    if (!ready) return;
+    postToHost({
+      type: 'layout:persist',
+      payload: {
+        viewSettings: {
+          showOnlyPkFk: showOnlyPkFk || undefined,
+          showGroupBoundary: showGroupBoundary === false ? false : undefined,
+          showCardinalityLabels: showCardinalityLabels === false ? false : undefined,
+        },
+      },
+    });
+  }, [ready, showOnlyPkFk, showGroupBoundary, showCardinalityLabels]);
 
   useEffect(() => {
     if (!ready) return;

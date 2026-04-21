@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.12] - 2026-04-21
+
+### Added
+- **Persistent view toggles**: PK/FK only, Table Groups boundary, and Cardinality label toggle states are now saved in the layout sidecar JSON (`viewSettings` key) and restored when reopening the diagram
+
+### Fixed
+- **Export SVG/PNG respects toggles**: SVG and PNG exports now match the live diagram — PK/FK filter hides non-key columns, group boundaries are omitted when disabled, and cardinality labels are omitted when disabled
+
 ## [0.1.11] - 2026-04-21
 
 ### Added

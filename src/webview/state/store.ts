@@ -96,7 +96,15 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
     for (const [id, eo] of Object.entries(layout.edges ?? {})) {
       if (eo.dx !== undefined || eo.dy !== undefined) edgeOffsets.set(id, { dx: eo.dx, dy: eo.dy });
     }
-    set({ positions, hiddenTables, tableColors, edgeOffsets, groups: { ...layout.groups }, viewport: { ...layout.viewport } });
+    const vs = layout.viewSettings ?? {};
+    set({
+      positions, hiddenTables, tableColors, edgeOffsets,
+      groups: { ...layout.groups },
+      viewport: { ...layout.viewport },
+      showOnlyPkFk: vs.showOnlyPkFk ?? false,
+      showGroupBoundary: vs.showGroupBoundary ?? true,
+      showCardinalityLabels: vs.showCardinalityLabels ?? true,
+    });
   },
   setTablePos(name, x, y) {
     set((s) => {

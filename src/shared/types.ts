@@ -113,12 +113,19 @@ export interface EdgeLayout {
   dy?: number;
 }
 
+export interface ViewSettings {
+  showOnlyPkFk?: boolean;
+  showGroupBoundary?: boolean;
+  showCardinalityLabels?: boolean;
+}
+
 export interface Layout {
   version: 1;
   viewport: ViewportLayout;
   tables: Record<QualifiedName, TableLayout>;
   groups: Record<string, GroupLayout>;
   edges?: Record<string, EdgeLayout>;
+  viewSettings?: ViewSettings;
 }
 
 /* ----- Protocol: Host → Webview ----- */

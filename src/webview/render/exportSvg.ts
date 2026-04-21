@@ -1,6 +1,6 @@
-import type { QualifiedName, Ref, Schema, Table } from '../../shared/types';
+import type { QualifiedName, Ref, Table } from '../../shared/types';
 import type { AppState } from '../state/store';
-import { estimateSize, TABLE_HEADER_H, TABLE_ROW_H, TABLE_WIDTH } from '../layout/autoLayout';
+import { estimateSize, TABLE_HEADER_H, TABLE_ROW_H } from '../layout/autoLayout';
 import { routeRefs } from './edgeRouter';
 import type { Bbox } from './spatialIndex';
 
@@ -70,7 +70,21 @@ function esc(s: string): string {
 }
 
 export function generateSvg(state: AppState): string {
-  const { schema, positions, hiddenTables, tableColors, groups: grpState, theme, edgeOffsets } = state;
+  const { schema, positions, hiddenTables, tableColors, groups: grpState, theme, edgeOffsets,
+    showOnlyPkFk, showGroupBoundary, showCardinalityLabels } = state;
+
+  // Build fkColumnsByTable from refs (mirrors app.tsx useMemo)
+  const fkColsByTable = new Map<QualifiedName, Set<string>>();
+  for (const r of schema.refs) {
+    for (const c of r.source.columns) { let s = fkColsByTable.get(r.source.table); if (!s) { s = new Set(); fkColsByTable.set(r.source.table, s); } s.add(c); }
+    for (const c of r.target.columns) { let s = fkColsByTable.get(r.target.table); if (!s) { s = new Set(); fkColsByTable.set(r.target.table, s); } s.add(c); }
+  }
+
+  const getRenderedTable = (t: Table): Table => {
+    if (!showOnlyPkFk) return t;
+    const fk = fkColsByTable.get(t.name) ?? new Set<string>();
+    return { ...t, columns: t.columns.filter((c) => c.pk || fk.has(c.name)) };
+  };
 
   // Compute visibility state (mirrors app.tsx derived logic)
   const hidden = new Set<QualifiedName>(hiddenTables);
@@ -85,8 +99,9 @@ export function generateSvg(state: AppState): string {
       let sx = 0, sy = 0, n = 0;
       for (const t of g.tables) {
         const p = positions.get(t); if (!p) continue;
-        const sz = estimateSize(schema.tables.find((x) => x.name === t)?.columns.length ?? 0);
-        sx += p.x + sz.width / 2; sy += p.y + sz.height / 2; n++;
+        const tbl = schema.tables.find((x) => x.name === t);
+        const rh = tbl ? tableActualHeight(getRenderedTable(tbl)) : estimateSize(0).height;
+        sx += p.x + estimateSize(0).width / 2; sy += p.y + rh / 2; n++;
         collapsedSet.add(t);
       }
       if (n > 0) collapsedNodes.push({ name: g.name, x: Math.round(sx / n - GRP_W / 2), y: Math.round(sy / n - GRP_H / 2), w: GRP_W, h: GRP_H, color: st.color ?? hslColor(g.name), count: g.tables.length });
@@ -95,9 +110,11 @@ export function generateSvg(state: AppState): string {
       for (const t of g.tables) {
         if (hidden.has(t)) continue;
         const p = positions.get(t); if (!p) continue;
-        const sz = estimateSize(schema.tables.find((x) => x.name === t)?.columns.length ?? 0);
+        const tbl = schema.tables.find((x) => x.name === t);
+        const rh = tbl ? tableActualHeight(getRenderedTable(tbl)) : estimateSize(0).height;
         if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y;
-        if (p.x + sz.width > x1) x1 = p.x + sz.width; if (p.y + sz.height > y1) y1 = p.y + sz.height;
+        if (p.x + estimateSize(0).width > x1) x1 = p.x + estimateSize(0).width;
+        if (p.y + rh > y1) y1 = p.y + rh;
         n++;
       }
       if (n > 0) containers.push({ name: g.name, x: Math.round(x0 - GRP_PAD), y: Math.round(y0 - GRP_PAD - GRP_HDR), w: Math.round(x1 - x0 + GRP_PAD * 2), h: Math.round(y1 - y0 + GRP_PAD * 2 + GRP_HDR), color: st?.color ?? hslColor(g.name) });
@@ -130,15 +147,17 @@ export function generateSvg(state: AppState): string {
     if (name.startsWith(GP)) return { x: p.x, y: p.y, w: GRP_W, h: GRP_H };
     const t = schema.tables.find((x) => x.name === name);
     if (!t) return undefined;
-    return { x: p.x, y: p.y, w: estimateSize(t.columns.length).width, h: tableActualHeight(t) };
+    return { x: p.x, y: p.y, w: estimateSize(t.columns.length).width, h: tableActualHeight(getRenderedTable(t)) };
   };
 
   const columnYResolver = (tableName: QualifiedName, column: string): number | undefined => {
     const t = schema.tables.find((x) => x.name === tableName);
     if (!t) return undefined;
-    const idx = t.columns.findIndex((c) => c.name === column);
+    const rt = getRenderedTable(t);
+    const idx = rt.columns.findIndex((c) => c.name === column);
     if (idx < 0) return undefined;
-    return colRowY(t, idx) + TABLE_ROW_H / 2;
+    const isModify = t.columnChanges?.[rt.columns[idx]!.name]?.kind === 'modify';
+    return colRowY(rt, idx) + (isModify ? TABLE_ROW_H * 1.5 : TABLE_ROW_H / 2);
   };
 
   const routes = routeRefs(effRefs, bboxOf, columnYResolver, (id) => edgeOffsets.get(id));
@@ -152,7 +171,7 @@ export function generateSvg(state: AppState): string {
     if (hidden.has(t.name) || collapsedSet.has(t.name)) continue;
     const p = positions.get(t.name); if (!p) continue;
     const tw = estimateSize(t.columns.length).width;
-    const th = tableActualHeight(t);
+    const th = tableActualHeight(getRenderedTable(t));
     if (p.x < x0) x0 = p.x; if (p.y < y0) y0 = p.y;
     if (p.x + tw > x1) x1 = p.x + tw; if (p.y + th > y1) y1 = p.y + th;
   }
@@ -190,18 +209,20 @@ export function generateSvg(state: AppState): string {
     const t = schema.tables[ti]!;
     if (hidden.has(t.name) || collapsedSet.has(t.name)) continue;
     const p = positions.get(t.name); if (!p) continue;
-    L.push(`<clipPath id="c${ti}"><rect x="${p.x}" y="${p.y}" width="${estimateSize(t.columns.length).width}" height="${tableActualHeight(t)}" rx="4"/></clipPath>`);
+    L.push(`<clipPath id="c${ti}"><rect x="${p.x}" y="${p.y}" width="${estimateSize(t.columns.length).width}" height="${tableActualHeight(getRenderedTable(t))}" rx="4"/></clipPath>`);
   }
   L.push('</defs>');
 
   // Background
   L.push(`<rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="${bg}"/>`);
 
-  // Group containers
-  for (const c of containers) {
-    const a = dark ? 0.13 : 0.09;
-    L.push(`<rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" rx="6" fill="${withAlpha(c.color, a)}" stroke="${c.color}" stroke-width="1.5" stroke-dasharray="6 3"/>`);
-    L.push(`<text x="${c.x + 8}" y="${c.y + 14}" font-family="system-ui,sans-serif" font-size="11" font-weight="600" fill="${c.color}">${esc(c.name)}</text>`);
+  // Group containers (only when showGroupBoundary is enabled)
+  if (showGroupBoundary) {
+    for (const c of containers) {
+      const a = dark ? 0.13 : 0.09;
+      L.push(`<rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" rx="6" fill="${withAlpha(c.color, a)}" stroke="${c.color}" stroke-width="1.5" stroke-dasharray="6 3"/>`);
+      L.push(`<text x="${c.x + 8}" y="${c.y + 14}" font-family="system-ui,sans-serif" font-size="11" font-weight="600" fill="${c.color}">${esc(c.name)}</text>`);
+    }
   }
 
   // Edges (draw before tables so tables sit on top)
@@ -216,8 +237,10 @@ export function generateSvg(state: AppState): string {
     const srcLabelX   = r.source.x + (r.source.side === 'right' ? 16 : -16);
     const tgtLabelX   = r.target.x + (r.target.side === 'right' ? 16 : -16);
     L.push(`<path d="${r.d}" fill="none" stroke="${edgeLine}" stroke-width="1.5" stroke-linecap="round" marker-start="${startMarker}" marker-end="${endMarker}"/>`);
-    L.push(`<text x="${srcLabelX}" y="${r.source.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${srcLabel}</text>`);
-    L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
+    if (showCardinalityLabels) {
+      L.push(`<text x="${srcLabelX}" y="${r.source.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${srcLabel}</text>`);
+      L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
+    }
   }
 
   // Migration diff colors
@@ -230,8 +253,9 @@ export function generateSvg(state: AppState): string {
     const t = schema.tables[ti]!;
     if (hidden.has(t.name) || collapsedSet.has(t.name)) continue;
     const p = positions.get(t.name); if (!p) continue;
+    const rt = getRenderedTable(t);
     const w = estimateSize(t.columns.length).width;
-    const h = tableActualHeight(t);
+    const h = tableActualHeight(rt);
     const { x, y } = p;
 
     const gclr = t.groupName ? (grpState[t.groupName]?.color ?? hslColor(t.groupName)) : undefined;
@@ -245,10 +269,10 @@ export function generateSvg(state: AppState): string {
     L.push(`<g clip-path="url(#c${ti})">`);
     L.push(`  <rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${tblFill}"/>`);
     L.push(`  <rect x="${x}" y="${y}" width="${w}" height="${TABLE_HEADER_H}" fill="${hdr}"/>`);
-    for (let ci = 0; ci < t.columns.length; ci++) {
-      const col = t.columns[ci]!;
+    for (let ci = 0; ci < rt.columns.length; ci++) {
+      const col = rt.columns[ci]!;
       const change = changes[col.name];
-      const ry = y + colRowY(t, ci);
+      const ry = y + colRowY(rt, ci);
       if (ci > 0) L.push(`  <line x1="${x}" y1="${ry}" x2="${x + w}" y2="${ry}" stroke="${rowLine}" stroke-width="1"/>`);
 
       if (change?.kind === 'modify') {

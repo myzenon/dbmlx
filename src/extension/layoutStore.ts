@@ -44,7 +44,8 @@ export function parseLayout(text: string): Layout {
   const tables = toTables(r.tables);
   const groups = toGroups(r.groups);
   const edges = toEdges(r.edges);
-  return { version: 1, viewport, tables, groups, edges };
+  const viewSettings = toViewSettings(r.viewSettings);
+  return { version: 1, viewport, tables, groups, edges, viewSettings };
 }
 
 function toEdges(raw: unknown): Record<string, EdgeLayout> {
@@ -100,6 +101,16 @@ function toGroups(raw: unknown): Record<string, GroupLayout> {
   return out;
 }
 
+function toViewSettings(raw: unknown): Layout['viewSettings'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const out: NonNullable<Layout['viewSettings']> = {};
+  if (r.showOnlyPkFk === true) out.showOnlyPkFk = true;
+  if (r.showGroupBoundary === false) out.showGroupBoundary = false;
+  if (r.showCardinalityLabels === false) out.showCardinalityLabels = false;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function numeric(v: unknown, fallback: number, asInt: boolean): number {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN;
   if (!Number.isFinite(n)) return fallback;
@@ -150,9 +161,18 @@ export function serializeLayout(layout: Layout): string {
   });
 
   const edgeEntries = Object.entries(layout.edges ?? {}).filter(([, v]) => v.dx !== undefined || v.dy !== undefined);
-  if (edgeEntries.length === 0) {
+  const vsParts: string[] = [];
+  if (layout.viewSettings?.showOnlyPkFk === true) vsParts.push('"showOnlyPkFk": true');
+  if (layout.viewSettings?.showGroupBoundary === false) vsParts.push('"showGroupBoundary": false');
+  if (layout.viewSettings?.showCardinalityLabels === false) vsParts.push('"showCardinalityLabels": false');
+
+  if (edgeEntries.length === 0 && vsParts.length === 0) {
     lines.push('  },');
     lines.push('  "edges": {}');
+  } else if (edgeEntries.length === 0) {
+    lines.push('  },');
+    lines.push('  "edges": {},');
+    lines.push(`  "viewSettings": { ${vsParts.join(', ')} }`);
   } else {
     lines.push('  },');
     lines.push('  "edges": {');
@@ -161,10 +181,15 @@ export function serializeLayout(layout: Layout): string {
       const parts: string[] = [];
       if (v.dx !== undefined) parts.push(`"dx": ${Math.round(v.dx)}`);
       if (v.dy !== undefined) parts.push(`"dy": ${Math.round(v.dy)}`);
-      const comma = i < edgeEntries.length - 1 ? ',' : '';
+      const comma = i < edgeEntries.length - 1 || vsParts.length > 0 ? ',' : '';
       lines.push(`    ${JSON.stringify(k)}: { ${parts.join(', ')} }${comma}`);
     });
-    lines.push('  }');
+    if (vsParts.length > 0) {
+      lines.push('  },');
+      lines.push(`  "viewSettings": { ${vsParts.join(', ')} }`);
+    } else {
+      lines.push('  }');
+    }
   }
 
   lines.push('}');

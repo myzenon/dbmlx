@@ -243,6 +243,8 @@ export class DiagramPanel {
       viewport: payload.viewport ?? this.currentLayout.viewport,
       tables: payload.tables ?? this.currentLayout.tables,
       groups: payload.groups ?? this.currentLayout.groups,
+      edges: payload.edges ?? this.currentLayout.edges,
+      viewSettings: payload.viewSettings !== undefined ? payload.viewSettings : this.currentLayout.viewSettings,
     };
     this.currentLayout = merged;
     this.pendingPersist = merged;
