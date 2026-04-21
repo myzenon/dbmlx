@@ -358,7 +358,7 @@ const COLUMN_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Complet
   { label: 'ref: ', doc: 'Inline foreign-key reference.', kind: vscode.CompletionItemKind.Reference },
   { label: 'add', doc: 'Migration diff — column is being added in this migration.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'drop', doc: 'Migration diff — column is being dropped in this migration.', kind: vscode.CompletionItemKind.EnumMember },
-  { label: 'modify: ', doc: 'Migration diff — column is being modified. Use name="old", type="old", default="old" for value changes; pk=true/false, not_null=true/false, unique=true/false, increment=true/false to record constraint changes.', kind: vscode.CompletionItemKind.EnumMember, snippet: 'modify: ${1|name,type,default,pk,not_null,unique,increment|}=${2|"$3",true,false|}' },
+  { label: 'modify: ', doc: 'Migration diff — column is being modified. Use name="old", type="old", default="old" for value changes; pk=true/false, not_null=true/false, unique=true/false, increment=true/false to record constraint changes.', kind: vscode.CompletionItemKind.EnumMember },
 ];
 
 const INDEX_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.CompletionItemKind }> = [
@@ -374,9 +374,9 @@ const INDEX_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Completi
   { label: 'note: ', doc: 'Index note/comment.', kind: vscode.CompletionItemKind.Property },
 ];
 
-const TOPLEVEL_SNIPPETS: Array<{ label: string; snippet: string; doc: string }> = [
+const TOPLEVEL_SNIPPETS: Array<{ label: string; snippet: string; doc: string; command?: string }> = [
   { label: 'Table', snippet: 'Table ${1:name} {\n\t$0\n}', doc: 'Define a database table.' },
-  { label: 'Ref', snippet: 'Ref "${1:name}": "${2:schema}"."${3:table}"."${4:column}" ${5|>,<,<>,-|} "${6:schema}"."${7:table}"."${8:column}"', doc: 'Define a relationship (inline).' },
+  { label: 'Ref', snippet: 'Ref "${1:name}": ', doc: 'Define a relationship. Schema/table/column completions trigger automatically.', command: 'editor.action.triggerSuggest' },
   { label: 'Enum', snippet: 'Enum ${1:name} {\n\t$0\n}', doc: 'Define an enum type.' },
   { label: 'TableGroup', snippet: 'TableGroup ${1:name} {\n\t$0\n}', doc: 'Group tables into a bounded context.' },
   { label: 'Project', snippet: 'Project ${1:name} {\n\tdatabase_type: \'$1\'\n\t$0\n}', doc: 'Project-level metadata.' },
@@ -639,6 +639,8 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
         item.documentation = s.doc;
         const snip = (s as { snippet?: string }).snippet;
         if (snip) item.insertText = new vscode.SnippetString(snip);
+        // modify: has no snippet — just inserts the label, then auto-show MODIFY_KEYS
+        if (s.label === 'modify: ') item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest modify keys' };
         return item;
       });
     }
@@ -742,11 +744,12 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
     // 8. Top-level (outside any block): keyword snippets + table names
     if (block === 'none' && /^\s*\w*$/.test(linePrefix)) {
       return [
-        ...TOPLEVEL_SNIPPETS.map(({ label, snippet, doc: d }) => {
+        ...TOPLEVEL_SNIPPETS.map(({ label, snippet, doc: d, command }) => {
           const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Keyword);
           item.insertText = new vscode.SnippetString(snippet);
           item.documentation = d;
           item.sortText = `0_${label}`;
+          if (command) item.command = { command, title: 'Suggest' };
           return item;
         }),
         ...this.tableNameItems(uri),

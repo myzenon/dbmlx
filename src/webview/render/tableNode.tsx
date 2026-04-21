@@ -138,12 +138,14 @@ function TableHeader({ table, configurable, headerStyle, changeCount, tableChang
   return (
     <div class="ddd-table__header" style={headerStyle} onPointerDown={onHeadPointerDown}>
       <span class="ddd-table__title">
-        {table.schemaName !== 'public' ? <span class="ddd-table__schema">{table.schemaName}.</span> : null}
-        <span class="ddd-table__name">{table.tableName}</span>
-        {table.note ? <TableNoteIcon note={table.note} name={table.name} /> : null}
         {tableChange === 'add' ? <span class="ddd-table__change-badge ddd-table__change-badge--add" title="New table being added">+NEW</span> : null}
         {tableChange === 'drop' ? <span class="ddd-table__change-badge ddd-table__change-badge--drop" title="Table being dropped">DROP</span> : null}
         {changeCount ? <span class="ddd-table__change-badge" title={`${changeCount} migration change${changeCount > 1 ? 's' : ''}`}>{changeCount}</span> : null}
+        <span class="ddd-table__name-wrap">
+          {table.schemaName !== 'public' ? <span class="ddd-table__schema">{table.schemaName}.</span> : null}
+          <span class="ddd-table__name">{table.tableName}</span>
+          {table.note ? <TableNoteIcon note={table.note} name={table.name} /> : null}
+        </span>
       </span>
       {configurable ? (
         <button

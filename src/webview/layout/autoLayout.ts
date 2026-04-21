@@ -99,7 +99,7 @@ function runSnowflake(
 
   if (superDegree(sortedSupers[0]!) === 0) return runCompact(tables, sizeOf, groupAware);
 
-  // Build tablesBySuper early so we can compute bounding boxes for adaptive radii
+  // Build tablesBySuper early so we can compute bounding boxes
   const tablesBySuper = new Map<string, Table[]>();
   for (const t of tables) {
     const s = superOf(t);
@@ -107,7 +107,7 @@ function runSnowflake(
     tablesBySuper.get(s)!.push(t);
   }
 
-  // Estimate the bounding box of a super-node's mini compact grid
+  // Bounding box of a super-node's mini compact grid
   function superBbox(superName: string): { w: number; h: number } {
     const members = tablesBySuper.get(superName) ?? [];
     if (members.length === 0) return { w: 220, h: 80 };
@@ -126,6 +126,9 @@ function runSnowflake(
     return { w: maxX, h: maxY };
   }
 
+  // Half-diagonal of a bbox — used as the circumscribed circle radius for collision
+  const halfDiag = (b: { w: number; h: number }) => Math.sqrt(b.w * b.w + b.h * b.h) / 2;
+
   // BFS on super-nodes
   const visited = new Set<string>();
   const levels: string[][] = [];
@@ -143,34 +146,45 @@ function runSnowflake(
     frontier = next;
   }
 
-  const HGAP = 100; // minimum horizontal gap between super-node bboxes
-  const VGAP = 80;  // minimum vertical gap between super-node bboxes
-  const centerBox = superBbox(levels[0]![0]!);
+  const GAP = 80; // minimum clear gap between any two bbox circumscribed circles
   const superPos = new Map<string, { cx: number; cy: number }>();
 
-  for (const [li, level] of levels.entries()) {
-    if (li === 0) {
-      superPos.set(level[0]!, { cx: 0, cy: 0 });
-    } else {
-      // Adaptive elliptical radii: ensure the ring center is far enough from the
-      // center super-node bbox so edges of adjacent bboxes don't overlap.
-      const maxW = Math.max(...level.map((s) => superBbox(s).w));
-      const maxH = Math.max(...level.map((s) => superBbox(s).h));
-      const rx = Math.max(300, (centerBox.w / 2 + maxW / 2 + HGAP)) * li;
-      const ry = Math.max(220, (centerBox.h / 2 + maxH / 2 + VGAP)) * li;
+  // Track the outer circumscribed boundary of the previous ring so the next ring
+  // starts far enough to avoid radial overlap.
+  let prevOuterRadius = halfDiag(superBbox(levels[0]![0]!));
+  superPos.set(levels[0]![0]!, { cx: 0, cy: 0 });
 
-      const step = (2 * Math.PI) / level.length;
-      for (let i = 0; i < level.length; i++) {
-        const angle = i * step - Math.PI / 2;
-        superPos.set(level[i]!, {
-          cx: Math.round(rx * Math.cos(angle)),
-          cy: Math.round(ry * Math.sin(angle)),
-        });
-      }
+  for (let li = 1; li < levels.length; li++) {
+    const level = levels[li]!;
+    const n = level.length;
+    const bboxes = level.map((s) => superBbox(s));
+    const halfDiags = bboxes.map(halfDiag);
+    const maxHD = Math.max(...halfDiags);
+
+    // Constraint 1: clear the inner ring's outer boundary
+    const rRadial = prevOuterRadius + GAP + maxHD;
+
+    // Constraint 2: adjacent nodes on this ring must not overlap
+    // chord between neighbours = 2r·sin(π/n) ≥ maxHD_left + maxHD_right + GAP
+    // worst-case: all max → 2r·sin(π/n) ≥ 2·maxHD + GAP
+    // → r ≥ (maxHD + GAP/2) / sin(π/n)
+    const rAngular = n > 1 ? (maxHD + GAP / 2) / Math.sin(Math.PI / n) : 0;
+
+    const r = Math.max(rRadial, rAngular);
+
+    const step = (2 * Math.PI) / n;
+    for (let i = 0; i < n; i++) {
+      const angle = i * step - Math.PI / 2;
+      superPos.set(level[i]!, {
+        cx: Math.round(r * Math.cos(angle)),
+        cy: Math.round(r * Math.sin(angle)),
+      });
     }
+
+    prevOuterRadius = r + maxHD;
   }
 
-  // Isolated super-nodes: place in a row below the actual bounding box of BFS nodes
+  // Isolated super-nodes: row below the BFS bounding box
   const isolated = [...superAdj.keys()].filter((s) => !visited.has(s));
   if (isolated.length > 0) {
     let bfsMaxY = 0;
@@ -178,12 +192,12 @@ function runSnowflake(
       const b = superBbox(s);
       bfsMaxY = Math.max(bfsMaxY, pos.cy + b.h / 2);
     }
-    const bottomY = Math.round(bfsMaxY) + VGAP + 60;
     let cx = 0;
+    const bottomY = Math.round(bfsMaxY) + GAP + 60;
     for (const s of isolated) {
       const b = superBbox(s);
       superPos.set(s, { cx, cy: bottomY });
-      cx += b.w + HGAP;
+      cx += b.w + GAP;
     }
   }
 

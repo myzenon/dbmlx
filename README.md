@@ -120,6 +120,12 @@ The **Table Groups** panel (top-left of the diagram) lists all `TableGroup`s plu
 - **Hide all ungrouped** tables via the No Group row's eye button.
 - Assign custom colors per group or per table via the gear menu.
 - Search by group or table name — matching groups expand automatically.
+- **Click a group name** to focus the viewport on that group's tables.
+- **Annotation filter chips** — filter the list to tables with migration changes:
+  - `+NEW` — tables with `[add]` annotation
+  - `DROP` — tables with `[drop]` annotation
+  - `DIFF` — tables that have any column-level diff annotation (`[add]`, `[drop]`, or `[modify:]`)
+  - Chips combine with the search query (OR logic within chips). A colored dot on each table row indicates its annotation state.
 
 ### Diagram Views
 

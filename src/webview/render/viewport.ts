@@ -117,6 +117,40 @@ export function focusTable(name: QualifiedName): void {
   state.setViewport({ x: vw / 2 - cx * zoom, y: vh / 2 - cy * zoom, zoom });
 }
 
+export function focusGroup(groupName: string): void {
+  const state = store.getState();
+  const group = state.schema.groups.find((g) => g.name === groupName);
+  if (!group) return;
+
+  // Un-hide / un-collapse the group first so its tables are visible.
+  const gs = state.groups[groupName];
+  if (gs?.hidden) { state.setGroup(groupName, { hidden: false }); schedulePersist(); }
+  if (gs?.collapsed) { state.setGroup(groupName, { collapsed: false }); schedulePersist(); }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const name of group.tables) {
+    const pos = state.positions.get(name);
+    if (!pos) continue;
+    const t = state.schema.tables.find((t) => t.name === name);
+    const w = estimateSize(t?.columns.length ?? 0).width;
+    const h = t ? tableActualHeight(t) : estimateSize(0).height;
+    if (pos.x < minX) minX = pos.x;
+    if (pos.y < minY) minY = pos.y;
+    if (pos.x + w > maxX) maxX = pos.x + w;
+    if (pos.y + h > maxY) maxY = pos.y + h;
+  }
+  if (!Number.isFinite(minX)) return;
+
+  const el = _viewportEl;
+  const vw = el ? el.getBoundingClientRect().width : window.innerWidth;
+  const vh = el ? el.getBoundingClientRect().height : window.innerHeight;
+  const padding = 64;
+  const zoom = clamp(Math.min((vw - padding * 2) / Math.max(1, maxX - minX), (vh - padding * 2) / Math.max(1, maxY - minY)), 0.08, 4);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  state.setViewport({ x: vw / 2 - cx * zoom, y: vh / 2 - cy * zoom, zoom });
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }

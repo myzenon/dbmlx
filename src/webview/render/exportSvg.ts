@@ -288,6 +288,11 @@ export function generateSvg(state: AppState): string {
         L.push(`  <rect x="${x}" y="${ry}" width="2" height="${TABLE_ROW_H * 2}" fill="${migModify}"/>`);
         const beforeNameColor = fromPk ? pkColor : fg;
         L.push(`  <text x="${x + 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${beforeNameColor}" opacity="0.4" text-decoration="line-through">${esc(fromName)}</text>`);
+        if (fromPk) {
+          const iconX = x + 8 + fromName.length * 6.6 + 4;
+          const iconY = ry + 5;
+          L.push(`  <g transform="translate(${iconX},${iconY}) scale(0.625)" opacity="0.4"><path d="M10.5 2a3.5 3.5 0 0 0-3.37 4.48L2 11.61V14h2v-1h1v-1h1v-1h1v-1.12l1.02-1.02A3.5 3.5 0 1 0 10.5 2zm0 1a2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1-.8-.13L8.5 9.06V10H7.5v1H6.5v1H5.5v1H3v-.97l5.26-5.26A2.5 2.5 0 0 1 10.5 3zM11 4.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" fill="${pkColor}"/></g>`);
+        }
         let beforeRightX = x + w - 8;
         if (fromUnique) { L.push(`  <text x="${beforeRightX}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" opacity="0.4" text-anchor="end" text-decoration="line-through">U</text>`); beforeRightX -= 14; }
         if (fromNotNull) { L.push(`  <text x="${beforeRightX}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" opacity="0.4" text-anchor="end" text-decoration="line-through">NN</text>`); beforeRightX -= 20; }
@@ -308,13 +313,19 @@ export function generateSvg(state: AppState): string {
         L.push(`  <rect x="${x}" y="${ry}" width="${w}" height="${TABLE_ROW_H}" fill="${withAlpha(migDrop, 0.10)}"/>`);
         L.push(`  <rect x="${x}" y="${ry}" width="2" height="${TABLE_ROW_H}" fill="${migDrop}"/>`);
         L.push(`  <text x="${x + 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fg}" opacity="0.55" text-decoration="line-through">${esc(col.name)}</text>`);
-        L.push(`  <text x="${x + w - 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" opacity="0.55" text-anchor="end" text-decoration="line-through">${esc(col.type)}</text>`);
+        let dropRx = x + w - 8;
+        if (col.unique)  { L.push(`  <text x="${dropRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" opacity="0.55" text-anchor="end" text-decoration="line-through">U</text>`);  dropRx -= 14; }
+        if (col.notNull) { L.push(`  <text x="${dropRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" opacity="0.55" text-anchor="end" text-decoration="line-through">NN</text>`); dropRx -= 20; }
+        L.push(`  <text x="${dropRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" opacity="0.55" text-anchor="end" text-decoration="line-through">${esc(col.type)}</text>`);
       } else if (change?.kind === 'add') {
         L.push(`  <rect x="${x}" y="${ry}" width="${w}" height="${TABLE_ROW_H}" fill="${withAlpha(migAdd, 0.12)}"/>`);
         L.push(`  <rect x="${x}" y="${ry}" width="2" height="${TABLE_ROW_H}" fill="${migAdd}"/>`);
         const nc = col.pk ? pkColor : migAdd;
         L.push(`  <text x="${x + 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${nc}">+\u2009${esc(col.name)}</text>`);
-        L.push(`  <text x="${x + w - 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" text-anchor="end">${esc(col.type)}</text>`);
+        let addRx = x + w - 8;
+        if (col.unique)  { L.push(`  <text x="${addRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" text-anchor="end">U</text>`);  addRx -= 14; }
+        if (col.notNull) { L.push(`  <text x="${addRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" text-anchor="end">NN</text>`); addRx -= 20; }
+        L.push(`  <text x="${addRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" text-anchor="end">${esc(col.type)}</text>`);
       } else {
         const nc = col.pk ? pkColor : fg;
         L.push(`  <text x="${x + 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${nc}">${esc(col.name)}</text>`);
@@ -323,7 +334,10 @@ export function generateSvg(state: AppState): string {
           const iconY = ry + 5;
           L.push(`  <g transform="translate(${iconX},${iconY}) scale(0.625)"><path d="M10.5 2a3.5 3.5 0 0 0-3.37 4.48L2 11.61V14h2v-1h1v-1h1v-1h1v-1.12l1.02-1.02A3.5 3.5 0 1 0 10.5 2zm0 1a2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1-.8-.13L8.5 9.06V10H7.5v1H6.5v1H5.5v1H3v-.97l5.26-5.26A2.5 2.5 0 0 1 10.5 3zM11 4.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" fill="${pkColor}"/></g>`);
         }
-        L.push(`  <text x="${x + w - 8}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" text-anchor="end">${esc(col.type)}</text>`);
+        let regRx = x + w - 8;
+        if (col.unique)  { L.push(`  <text x="${regRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" text-anchor="end">U</text>`);  regRx -= 14; }
+        if (col.notNull) { L.push(`  <text x="${regRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${fgMuted}" text-anchor="end">NN</text>`); regRx -= 20; }
+        L.push(`  <text x="${regRx}" y="${ry + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="11" fill="${fgMuted}" text-anchor="end">${esc(col.type)}</text>`);
       }
     }
     L.push('</g>');
@@ -338,21 +352,22 @@ export function generateSvg(state: AppState): string {
     L.push(`<line x1="${x}" y1="${y + TABLE_HEADER_H}" x2="${x + w}" y2="${y + TABLE_HEADER_H}" stroke="${tblBorder}" stroke-width="1"/>`);
     const display = t.schemaName !== 'public' ? `${t.schemaName}.${t.tableName}` : t.tableName;
     const nameDecoration = tableAnn === 'drop' ? ' text-decoration="line-through"' : '';
-    L.push(`<text x="${x + 8}" y="${y + TABLE_HEADER_H - 8}" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${fg}"${nameDecoration}>${esc(display)}</text>`);
+    // Badges are rendered LEFT of the name so they're never clipped by long table names
+    const by = y + TABLE_HEADER_H - 14;
+    let nameX = x + 8;
     if (tableAnn) {
       const badgeLabel = tableAnn === 'add' ? '+NEW' : 'DROP';
-      const bx = x + 8 + display.length * 7.2 + 16;
-      const by = y + TABLE_HEADER_H - 14;
       const bw = tableAnn === 'add' ? 28 : 26;
-      L.push(`<rect x="${bx}" y="${by - 7}" width="${bw}" height="14" rx="7" fill="${tableAnnColor}"/>`);
-      L.push(`<text x="${bx + bw / 2}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="white" text-anchor="middle">${badgeLabel}</text>`);
+      L.push(`<rect x="${nameX}" y="${by - 7}" width="${bw}" height="14" rx="7" fill="${tableAnnColor}"/>`);
+      L.push(`<text x="${nameX + bw / 2}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="8" font-weight="700" fill="white" text-anchor="middle">${badgeLabel}</text>`);
+      nameX += bw + 6;
     }
     if (changeCount > 0) {
-      const bx = x + 8 + display.length * 7.2 + (tableAnn ? 50 : 10);
-      const by = y + TABLE_HEADER_H - 14;
-      L.push(`<circle cx="${bx}" cy="${by}" r="7" fill="${migModify}"/>`);
-      L.push(`<text x="${bx}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="white" text-anchor="middle">${changeCount}</text>`);
+      L.push(`<circle cx="${nameX + 7}" cy="${by}" r="7" fill="${migModify}"/>`);
+      L.push(`<text x="${nameX + 7}" y="${by + 4}" font-family="system-ui,sans-serif" font-size="9" font-weight="700" fill="white" text-anchor="middle">${changeCount}</text>`);
+      nameX += 20;
     }
+    L.push(`<text x="${nameX}" y="${y + TABLE_HEADER_H - 8}" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="${fg}"${nameDecoration}>${esc(display)}</text>`);
     L.push('</g>');
   }
 

@@ -15,7 +15,9 @@ import {
   IconSearch,
   IconSettings,
 } from '../icons';
-import { focusTable } from '../render/viewport';
+import { focusGroup, focusTable } from '../render/viewport';
+
+type AnnotationFilter = 'add' | 'drop' | 'modified';
 
 export function GroupPanel() {
   const groups = useAppStore((s) => s.schema.groups);
@@ -24,27 +26,62 @@ export function GroupPanel() {
   const hiddenTables = useAppStore((s) => s.hiddenTables);
   const [open, setOpen] = useState(true);
   const [query, setQuery] = useState('');
+  const [annFilters, setAnnFilters] = useState<Set<AnnotationFilter>>(new Set());
 
   const ungroupedTables = useMemo(
     () => allTables.filter((t) => t.groupName === null).map((t) => t.name),
     [allTables],
   );
 
+  // Map table qualified name → which annotation filters it matches
+  const tableAnnotations = useMemo(() => {
+    const map = new Map<string, Set<AnnotationFilter>>();
+    for (const t of allTables) {
+      const flags = new Set<AnnotationFilter>();
+      if (t.tableChange === 'add') flags.add('add');
+      if (t.tableChange === 'drop') flags.add('drop');
+      if (t.columnChanges && Object.keys(t.columnChanges).length > 0) flags.add('modified');
+      if (flags.size) map.set(t.name, flags);
+    }
+    return map;
+  }, [allTables]);
+
+  const toggleAnnFilter = (f: AnnotationFilter) => {
+    setAnnFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(f)) next.delete(f); else next.add(f);
+      return next;
+    });
+  };
+
+  const tablePassesFilters = (name: string): boolean => {
+    if (!annFilters.size) return true;
+    const flags = tableAnnotations.get(name);
+    if (!flags) return false;
+    for (const f of annFilters) if (flags.has(f)) return true;
+    return false;
+  };
+
   if (groups.length === 0 && ungroupedTables.length === 0) return null;
 
   const lcQuery = query.trim().toLowerCase();
   const filtered = useMemo(() => {
-    if (!lcQuery) return groups;
     return groups.filter((g) => {
-      if (g.name.toLowerCase().includes(lcQuery)) return true;
-      return g.tables.some((t) => t.toLowerCase().includes(lcQuery));
+      // Group name matches query → show group (all table filters still apply inside GroupRow)
+      if (lcQuery && g.name.toLowerCase().includes(lcQuery) && !annFilters.size) return true;
+      return g.tables.some((t) => {
+        const nameOk = !lcQuery || g.name.toLowerCase().includes(lcQuery) || t.toLowerCase().includes(lcQuery);
+        return nameOk && tablePassesFilters(t);
+      });
     });
-  }, [groups, lcQuery]);
+  }, [groups, lcQuery, annFilters, tableAnnotations]);
 
   const filteredUngrouped = useMemo(() => {
-    if (!lcQuery) return ungroupedTables;
-    return ungroupedTables.filter((t) => t.toLowerCase().includes(lcQuery));
-  }, [ungroupedTables, lcQuery]);
+    return ungroupedTables.filter((t) => {
+      const nameOk = !lcQuery || t.toLowerCase().includes(lcQuery);
+      return nameOk && tablePassesFilters(t);
+    });
+  }, [ungroupedTables, lcQuery, annFilters, tableAnnotations]);
 
   const anyVisible = groups.some((g) => !(groupState[g.name]?.hidden));
   const anyExpanded = groups.some((g) => !(groupState[g.name]?.collapsed));
@@ -100,9 +137,26 @@ export function GroupPanel() {
           onInput={(e) => setQuery((e.currentTarget as HTMLInputElement).value)}
         />
       </label>
+      <div class="ddd-ann-chips">
+        <button
+          class={`ddd-ann-chip ddd-ann-chip--add${annFilters.has('add') ? ' is-active' : ''}`}
+          onClick={() => toggleAnnFilter('add')}
+          title="Show only tables being added"
+        >+NEW</button>
+        <button
+          class={`ddd-ann-chip ddd-ann-chip--drop${annFilters.has('drop') ? ' is-active' : ''}`}
+          onClick={() => toggleAnnFilter('drop')}
+          title="Show only tables being dropped"
+        >DROP</button>
+        <button
+          class={`ddd-ann-chip ddd-ann-chip--modified${annFilters.has('modified') ? ' is-active' : ''}`}
+          onClick={() => toggleAnnFilter('modified')}
+          title="Show only tables with column changes"
+        >DIFF</button>
+      </div>
       <ul class="ddd-group-list">
         {filtered.length === 0 && filteredUngrouped.length === 0 ? (
-          <li class="ddd-group-empty">No matches for "{query}"</li>
+          <li class="ddd-group-empty">No matches{query ? ` for "${query}"` : ''}</li>
         ) : null}
         {filtered.map((g) => (
           <GroupRow
@@ -110,19 +164,27 @@ export function GroupPanel() {
             group={g}
             state={groupState[g.name]}
             hiddenTables={hiddenTables}
-            initialExpanded={lcQuery.length > 0}
+            initialExpanded={lcQuery.length > 0 || annFilters.size > 0}
             filter={lcQuery}
+            annFilters={annFilters}
+            tableAnnotations={tableAnnotations}
           />
         ))}
         {filteredUngrouped.length > 0 ? (
-          <NoGroupRow tables={filteredUngrouped} hiddenTables={hiddenTables} initialExpanded={lcQuery.length > 0} filter={lcQuery} />
+          <NoGroupRow
+            tables={filteredUngrouped}
+            hiddenTables={hiddenTables}
+            initialExpanded={lcQuery.length > 0 || annFilters.size > 0}
+            filter={lcQuery}
+            tableAnnotations={tableAnnotations}
+          />
         ) : null}
       </ul>
     </div>
   );
 }
 
-function NoGroupRow({ tables, hiddenTables, initialExpanded, filter }: { tables: string[]; hiddenTables: Set<string>; initialExpanded: boolean; filter: string }) {
+function NoGroupRow({ tables, hiddenTables, initialExpanded, filter, tableAnnotations }: { tables: string[]; hiddenTables: Set<string>; initialExpanded: boolean; filter: string; tableAnnotations: Map<string, Set<AnnotationFilter>> }) {
   const [userExpanded, setUserExpanded] = useState(initialExpanded);
   const expanded = filter.length > 0 ? true : userExpanded;
 
@@ -153,7 +215,7 @@ function NoGroupRow({ tables, hiddenTables, initialExpanded, filter }: { tables:
         <li class="ddd-group-children">
           <ul class="ddd-table-list">
             {tables.map((name) => (
-              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} />
+              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} annFlags={tableAnnotations.get(name)} />
             ))}
           </ul>
         </li>
@@ -168,9 +230,11 @@ interface GroupRowProps {
   hiddenTables: Set<string>;
   initialExpanded: boolean;
   filter: string;
+  annFilters: Set<AnnotationFilter>;
+  tableAnnotations: Map<string, Set<AnnotationFilter>>;
 }
 
-function GroupRow({ group, state, hiddenTables, initialExpanded, filter }: GroupRowProps) {
+function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilters, tableAnnotations }: GroupRowProps) {
   const [userExpanded, setUserExpanded] = useState(initialExpanded);
   const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
   const hidden = state?.hidden ?? false;
@@ -202,8 +266,17 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter }: Group
     setPopup(popupAnchorFor(anchorRect));
   };
 
-  const memberTables = filter
-    ? group.tables.filter((t) => t.toLowerCase().includes(filter))
+  const memberTables = (filter || annFilters.size)
+    ? group.tables.filter((t) => {
+        const nameOk = !filter || group.name.toLowerCase().includes(filter) || t.toLowerCase().includes(filter);
+        const annOk = !annFilters.size || (() => {
+          const flags = tableAnnotations.get(t);
+          if (!flags) return false;
+          for (const f of annFilters) if (flags.has(f)) return true;
+          return false;
+        })();
+        return nameOk && annOk;
+      })
     : group.tables;
 
   return (
@@ -215,7 +288,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter }: Group
           title={expanded ? 'Collapse list' : 'Expand table list'}
         >{expanded ? <IconChevronDown size={10} /> : <IconChevronRight size={10} />}</button>
         <span class="ddd-group-swatch" style={{ background: color }} title={color} />
-        <span class="ddd-group-name" title={`${group.tables.length} tables`}>{group.name}</span>
+        <button class="ddd-group-name ddd-group-name--btn" title={`Focus ${group.name}`} onClick={() => focusGroup(group.name)}>{group.name}</button>
         <span class="ddd-group-count">{group.tables.length}</span>
         <button
           class={`ddd-icon-btn ${hidden ? 'is-off' : ''}`}
@@ -247,7 +320,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter }: Group
         <li class="ddd-group-children">
           <ul class="ddd-table-list">
             {memberTables.map((name) => (
-              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} />
+              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} annFlags={tableAnnotations.get(name)} />
             ))}
           </ul>
         </li>
@@ -256,15 +329,17 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter }: Group
   );
 }
 
-function TableRow({ tableName, hidden }: { tableName: string; hidden: boolean }) {
+function TableRow({ tableName, hidden, annFlags }: { tableName: string; hidden: boolean; annFlags?: Set<AnnotationFilter> }) {
   const shortName = tableName.startsWith('public.') ? tableName.slice(7) : tableName;
   const toggle = () => {
     store.getState().setTableHidden(tableName, !hidden);
     schedulePersist();
   };
+  const badge = annFlags?.has('add') ? 'add' : annFlags?.has('drop') ? 'drop' : annFlags?.has('modified') ? 'modified' : null;
   return (
     <li class="ddd-table-row">
       <button class="ddd-table-row__name" title={`Focus ${tableName}`} onClick={() => focusTable(tableName)}>{shortName}</button>
+      {badge ? <span class={`ddd-table-ann-dot ddd-table-ann-dot--${badge}`} title={badge === 'add' ? 'New table' : badge === 'drop' ? 'Table removed' : 'Has column changes'} /> : null}
       <button
         class={`ddd-icon-btn ${hidden ? 'is-off' : ''}`}
         onClick={toggle}
