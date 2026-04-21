@@ -2,7 +2,7 @@
   "name": "dbmlx",
   "displayName": "DBMLX: Database Visual and Design",
   "description": "Interactive .dbmlx diagram renderer for VSCode. Git-friendly layout persistence, DDD-aware TableGroup contexts, LSP intelligence, SVG/PNG export, and viewport culling for 5000+ tables.",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "publisher": "si-zenon",
   "icon": "docs/icon.png",
   "engines": {
