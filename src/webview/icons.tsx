@@ -139,6 +139,24 @@ export const IconLayoutCompact = (p?: IconProps) => wrap(
   p,
 );
 
+export const IconPalette = (p?: IconProps) => wrap(
+  'M8 2c-3.3 0-6 2.7-6 6 0 3.3 2.7 6 6 6 .6 0 1-.4 1-1 0-.3-.1-.5-.2-.7-.2-.2-.3-.5-.3-.8 0-.6.4-1 1-1H11c2.2 0 4-1.8 4-4 0-2.8-3.1-5-7-5zM5 9c-.6 0-1-.4-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1zm1-3c-.6 0-1-.4-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1zm4 0c-.6 0-1-.4-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1zm2 3c-.6 0-1-.4-1-1s.4-1 1-1 1 .4 1 1-.4 1-1 1z',
+  p,
+);
+
+export const IconInfo = (p?: IconProps) => {
+  const { size = 14 } = p ?? {};
+  return (
+    <svg class="ddd-icon" viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        fill="currentColor"
+        d="M8 1A7 7 0 1 0 8 15A7 7 0 1 0 8 1ZM8 3A5 5 0 1 0 8 13A5 5 0 1 0 8 3ZM7 4H9V6.5H7ZM7 7.5H9V12H7Z"
+      />
+    </svg>
+  );
+};
+
 export const IconFocus = (p?: IconProps) => wrap(
   'M2 2h4v1H3v3H2V2zm10 0h2v4h-1V3h-3V2h2zm0 12h1v-3h1v4h-4v-1h2zm-10 0h3v1H2v-4h1v3zm6-8a2 2 0 1 1 0 4 2 2 0 0 1 0-4z',
   p,

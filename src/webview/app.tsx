@@ -283,6 +283,8 @@ export function App(_props: AppProps) {
     if (!el) return;
 
     const onWheel = (e: WheelEvent) => {
+      // Let overlay panels (group panel, toolbar) handle their own scrolling
+      if ((e.target as HTMLElement).closest('.ddd-group-panel, .ddd-actions')) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       // ctrlKey = pinch-to-zoom gesture on Mac trackpad (and Ctrl+scroll on mouse)

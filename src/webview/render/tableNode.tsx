@@ -1,4 +1,5 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
+import { createPortal } from 'preact/compat';
 import type { Column, ColumnChange, Table } from '../../shared/types';
 import type { LodLevel } from './lod';
 import { estimateSize } from '../layout/autoLayout';
@@ -6,7 +7,7 @@ import { startDrag, schedulePersist } from '../drag/dragController';
 import { postToHost } from '../vscode';
 import { store, useAppStore } from '../state/store';
 import { ColorPopup, popupAnchorFor } from './colorPopup';
-import { IconKey, IconNote, IconSettings } from '../icons';
+import { IconKey, IconNote, IconPalette, IconGoToFile, IconInfo } from '../icons';
 
 interface TableNodeProps {
   table: Table;
@@ -21,12 +22,9 @@ interface TableNodeProps {
 export function TableNode({ table, x, y, lod, selected, color, fkColumns }: TableNodeProps) {
   const size = estimateSize(table.columns.length);
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
+  const [showIcons, setShowIcons] = useState(false);
   const onPointerDown = (e: PointerEvent) => {
     startDrag(e, table.name, e.currentTarget as HTMLElement);
-  };
-  const onDblClick = (e: Event) => {
-    e.stopPropagation();
-    postToHost({ type: 'command:reveal', payload: { tableName: table.name } });
   };
 
   const selClass = selected ? ' is-selected' : '';
@@ -40,7 +38,6 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
         class={`ddd-table ddd-table--rect${selClass}`}
         data-id={table.name}
         onPointerDown={onPointerDown}
-        onDblClick={onDblClick}
         title={table.note ? `${table.name}\n\n${table.note}` : table.name}
         style={{
           position: 'absolute',
@@ -59,7 +56,6 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
         class={`ddd-table ddd-table--header-only${selClass}`}
         data-id={table.name}
         onPointerDown={onPointerDown}
-        onDblClick={onDblClick}
         style={{
           position: 'absolute',
           transform: `translate3d(${x}px, ${y}px, 0)`,
@@ -86,14 +82,15 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
       class={`ddd-table${selClass}${changeCount > 0 ? ' ddd-table--changed' : ''}${tableChangeClass}`}
       data-id={table.name}
       onPointerDown={onPointerDown}
-      onDblClick={onDblClick}
+      onMouseEnter={() => setShowIcons(true)}
+      onMouseLeave={() => setShowIcons(false)}
       style={{
         position: 'absolute',
         transform: `translate3d(${x}px, ${y}px, 0)`,
         borderTopColor: color ?? undefined,
       }}
     >
-      <TableHeader table={table} configurable headerStyle={headerStyle} changeCount={changeCount} tableChange={table.tableChange} tableFromName={table.tableFromName} />
+      <TableHeader table={table} configurable showIcons={showIcons} headerStyle={headerStyle} changeCount={changeCount} tableChange={table.tableChange} tableFromName={table.tableFromName} />
       <ul class="ddd-table__cols">
         {visibleCols.map((c) => (
           <ColumnRow key={c.name} col={c} isFk={fkColumns?.has(c.name) ?? false} change={changes[c.name]} />
@@ -103,9 +100,31 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
   );
 }
 
-function TableHeader({ table, configurable, headerStyle, changeCount, tableChange, tableFromName }: { table: Table; configurable?: boolean; headerStyle?: Record<string, string>; changeCount?: number; tableChange?: 'add' | 'drop' | 'modify'; tableFromName?: string }) {
+function TableHeader({ table, configurable, showIcons, headerStyle, changeCount, tableChange, tableFromName }: { table: Table; configurable?: boolean; showIcons?: boolean; headerStyle?: Record<string, string>; changeCount?: number; tableChange?: 'add' | 'drop' | 'modify'; tableFromName?: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
+  const [showNameTip, setShowNameTip] = useState(false);
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
+  const infoRef = useRef<HTMLButtonElement>(null);
   const existing = store.getState().tableColors.get(table.name);
+
+  useEffect(() => {
+    if (!showNameTip) return;
+    const dismiss = () => setShowNameTip(false);
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('wheel', dismiss, { passive: true });
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('wheel', dismiss);
+    };
+  }, [showNameTip]);
+
+  const onInfoClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (showNameTip) { setShowNameTip(false); return; }
+    const r = infoRef.current?.getBoundingClientRect();
+    if (r) setTipPos({ x: r.left, y: r.bottom + 4 });
+    setShowNameTip(true);
+  };
 
   const applyColor = (c: string) => {
     store.getState().setTableColor(table.name, c);
@@ -116,28 +135,28 @@ function TableHeader({ table, configurable, headerStyle, changeCount, tableChang
     schedulePersist();
   };
 
-  const onGearClick = (e: MouseEvent) => {
+  const onColorClick = (e: MouseEvent) => {
     e.stopPropagation();
-    // Anchor popup to the outer table bounding box so it opens right-beside the table, not the tiny gear.
     const tableEl = (e.currentTarget as HTMLElement).closest('.ddd-table') as HTMLElement | null;
     const anchorRect = tableEl?.getBoundingClientRect() ?? (e.currentTarget as HTMLElement).getBoundingClientRect();
     setPopup(popupAnchorFor(anchorRect));
   };
 
-  const onGearPointerDown = (e: PointerEvent) => {
-    // Prevent drag / marquee from starting when user clicks gear.
+  const onGoToClick = (e: MouseEvent) => {
     e.stopPropagation();
+    postToHost({ type: 'command:reveal', payload: { tableName: table.name } });
   };
 
   const onHeadPointerDown = (e: PointerEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('.ddd-table__gear') || target.closest('.ddd-table__note-icon') || target.closest('.ddd-color-popup')) {
-      e.stopPropagation();
-    }
+    if ((e.target as HTMLElement).closest('.ddd-table__note-icon')) e.stopPropagation();
   };
 
   return (
-    <div class="ddd-table__header" style={headerStyle} onPointerDown={onHeadPointerDown}>
+    <div
+      class={`ddd-table__header${showIcons ? ' is-hovered' : ''}`}
+      style={headerStyle}
+      onPointerDown={onHeadPointerDown}
+    >
       <span class="ddd-table__title">
         {tableChange === 'add' ? <span class="ddd-table__change-badge ddd-table__change-badge--add" title="New table being added">+NEW</span> : null}
         {tableChange === 'drop' ? <span class="ddd-table__change-badge ddd-table__change-badge--drop" title="Table being dropped">DROP</span> : null}
@@ -146,24 +165,47 @@ function TableHeader({ table, configurable, headerStyle, changeCount, tableChang
           {table.schemaName !== 'public' ? <span class="ddd-table__schema">{table.schemaName}.</span> : null}
           {tableChange === 'modify' && tableFromName ? (
             <>
-              <span class="ddd-table__name ddd-table__name--before" title={`Renamed from ${tableFromName}`}>{tableFromName}</span>
-              <span class="ddd-table__name ddd-table__name--after">{table.tableName}</span>
+              <span class="ddd-table__name ddd-table__name--before">{midTruncate(tableFromName, 10)}</span>
+              <span class="ddd-table__name ddd-table__name--after">{midTruncate(table.tableName, 10)}</span>
             </>
           ) : (
-            <span class="ddd-table__name">{table.tableName}</span>
+            <span class="ddd-table__name">{midTruncate(table.tableName, 20)}</span>
           )}
           {table.note ? <TableNoteIcon note={table.note} name={table.name} /> : null}
         </span>
       </span>
       {configurable ? (
-        <button
-          class="ddd-table__gear"
-          onClick={onGearClick}
-          onPointerDown={onGearPointerDown}
-          title="Configure"
-        ><IconSettings size={12} /></button>
+        <div class="ddd-table__actions" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            ref={infoRef}
+            class="ddd-table__info"
+            onClick={onInfoClick}
+            title="Show full name"
+          ><IconInfo size={11} /></button>
+          <button
+            class="ddd-table__goto"
+            onClick={onGoToClick}
+            title="Go to definition"
+          ><IconGoToFile size={12} /></button>
+          <button
+            class="ddd-table__gear"
+            onClick={onColorClick}
+            title="Change color"
+          ><IconPalette size={12} /></button>
+        </div>
       ) : null}
-      {popup ? (
+      {showNameTip && tipPos ? createPortal(
+        <div
+          class="ddd-name-tip"
+          style={{ left: `${tipPos.x}px`, top: `${tipPos.y}px` }}
+        >
+          {tableChange === 'modify' && tableFromName
+            ? `${tableFromName} → ${table.tableName}`
+            : table.name}
+        </div>,
+        document.body,
+      ) : null}
+      {popup ? createPortal(
         <ColorPopup
           current={existing ?? 'var(--ddd-accent)'}
           x={popup.x}
@@ -171,7 +213,8 @@ function TableHeader({ table, configurable, headerStyle, changeCount, tableChang
           onPick={applyColor}
           onReset={resetColor}
           onClose={() => setPopup(null)}
-        />
+        />,
+        document.body,
       ) : null}
     </div>
   );
@@ -275,6 +318,13 @@ function TableNoteIcon({ note, name }: { note: string; name: string }) {
       <IconNote size={11} />
     </span>
   );
+}
+
+function midTruncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const tail = Math.floor((max - 1) / 2);
+  const head = max - 1 - tail;
+  return s.slice(0, head) + '…' + s.slice(s.length - tail);
 }
 
 /** Mix a hex/hsl color with dark background to produce a subtle tint. Returns rgba. */

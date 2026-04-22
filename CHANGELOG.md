@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.1.16] - 2026-04-22
+
+### Added
+- **Table header action icons**: hover over a table to reveal three icon buttons — info (ⓘ), go-to-definition, and color picker — grouped with a shared background that fades over the truncated name
+- **Full-name tooltip on click**: the ⓘ icon opens a persistent click-to-dismiss tooltip showing the full qualified table name (or `old → new` for renames), replacing the unreliable native hover tooltip
+- **Long name truncation**: table names longer than 20 characters are mid-truncated (`add…contracts`) in the header; rename diffs truncate each side to 10 characters
+
+### Changed
+- **Group color swatch is now the color picker**: clicking the colored rectangle in the Table Groups panel opens the color picker directly; the separate palette button has been removed
+
+### Fixed
+- **Table header icons no longer displace the name**: action icons are absolutely positioned with a shared background/fade, so the table name uses the full header width at rest
+- **Name tooltip dismisses on scroll/zoom**: the click-triggered name tooltip now closes on `wheel` events (pan/zoom) in addition to outside clicks
+
+## [0.1.15] - 2026-04-22
+
+### Added
+- **Auto-hide/show groups**: hiding all tables in a group automatically hides the group; showing any table in a hidden group automatically shows it
+
+## [0.1.14] - 2026-04-22
+
+### Added
+- **Rename diff in table header**: `[modify: name="old_name"]` on the `Table` declaration now shows `old → new` in the header with an amber border, consistent with column-level rename diffs
+
+## [0.1.13] - 2026-04-21
+
+### Added
+- **Table-level `[add]` / `[drop]` annotations**: annotate an entire table as new or removed — green border + `+NEW` badge for `[add]`, red border + `DROP` badge for `[drop]`
+
 ## [0.1.12] - 2026-04-21
 
 ### Added

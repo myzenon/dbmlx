@@ -104,7 +104,7 @@ The webview has no direct FS access. All I/O goes through `postMessage` typed in
 | `src/webview/render/lod.ts` | Zoom thresholds: `full` ≥0.6, `header` 0.3–0.6, `rect` <0.3 |
 | `src/webview/drag/dragController.ts` | Direct DOM mutation during drag; commits to store on `pointerup` |
 | `src/webview/layout/autoLayout.ts` | Dagre top-down; runs only for tables lacking a saved position |
-| `src/webview/groups/groupPanel.tsx` | Group list UI; collapse/hide toggles |
+| `src/webview/groups/groupPanel.tsx` | Group list UI; collapse/hide toggles; color swatch is the color picker |
 
 ### Layout file format
 
@@ -127,6 +127,14 @@ Sidecar `schema.dbmlx.layout.json` — keys alphabetically sorted, integers for 
 4. Viewport change → query spatial index (bbox + 256px margin) → `visibleNames`
 5. Render: filter `schema.tables` by `visibleNames`; `edgeLayer` filters refs similarly
 6. LOD per table based on zoom; drag bypasses Preact via direct DOM mutation
+
+### Table header action icons
+
+Three icon buttons — **ⓘ info**, **go-to-definition**, **palette** — live in a `.ddd-table__actions` container that is `position: absolute` on the right edge of the header and fades in on mouse-enter (`.is-hovered` class toggled by `TableNode`). The container carries the shared background and left-fade `box-shadow`; individual buttons are transparent.
+
+- **Info (ⓘ)**: click-to-toggle tooltip (portal to `document.body`) showing the full qualified name or `old → new` for renames. Dismissed by `pointerdown` or `wheel` anywhere.
+- Table names longer than 20 chars are mid-truncated (`add…contracts`) via `midTruncate()`. Rename diffs truncate each side to 10 chars.
+- The `.is-hovered` class is set on `TableNode` (outer div) mouse-enter/leave, not on `TableHeader`, so the hover zone covers the full table card.
 
 ### Performance targets
 

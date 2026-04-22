@@ -13,7 +13,6 @@ import {
   IconEyeClosed,
   IconFocus,
   IconSearch,
-  IconSettings,
 } from '../icons';
 import { focusGroup, focusTable } from '../render/viewport';
 
@@ -289,7 +288,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
           onClick={() => setUserExpanded(!userExpanded)}
           title={expanded ? 'Collapse list' : 'Expand table list'}
         >{expanded ? <IconChevronDown size={10} /> : <IconChevronRight size={10} />}</button>
-        <span class="ddd-group-swatch" style={{ background: color }} title={color} />
+        <button class="ddd-group-swatch" style={{ background: color }} title="Change color" onClick={onGearClick} />
         <button class="ddd-group-name ddd-group-name--btn" title={`Focus ${group.name}`} onClick={() => focusGroup(group.name)}>{group.name}</button>
         <span class="ddd-group-count">{group.tables.length}</span>
         <button
@@ -302,11 +301,6 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
           onClick={toggleCollapsed}
           title={collapsed ? 'Expand group' : 'Collapse group'}
         >{collapsed ? <IconExpandAll size={12} /> : <IconCollapseAll size={12} />}</button>
-        <button
-          class="ddd-icon-btn"
-          onClick={onGearClick}
-          title="Configure"
-        ><IconSettings size={12} /></button>
       </li>
       {popup ? (
         <ColorPopup

@@ -168,29 +168,14 @@ export class DiagramPanel {
   }
 
   private async revealTable(qualifiedName: string): Promise<void> {
-    // qualifiedName is "schema.tableName". DBML allows either `Table name` (public) or `Table schema.name`.
     try {
-      const bytes = await vscode.workspace.fs.readFile(this.dbmlUri);
-      const source = new TextDecoder('utf-8').decode(bytes);
-      const [schema, tableName] = splitQualified(qualifiedName);
-      const lines = source.split(/\r?\n/);
-      const re = /^\s*Table\s+([\w.]+)(?:\s+as\s+[\w]+)?\s*(?:\[[^\]]*\])?\s*\{/i;
-      let lineIdx = -1;
-      for (let i = 0; i < lines.length; i++) {
-        const m = re.exec(lines[i] ?? '');
-        if (!m) continue;
-        const ident = m[1] ?? '';
-        const parts = ident.split('.');
-        const s = parts.length > 1 ? parts[0]! : 'public';
-        const t = parts.length > 1 ? parts.slice(1).join('.') : ident;
-        if (s === schema && t === tableName) { lineIdx = i; break; }
-      }
-      if (lineIdx < 0) {
+      const loc = this.index.getTableLocation(qualifiedName);
+      if (!loc) {
         void vscode.window.showWarningMessage(`dbmlx: could not find "${qualifiedName}" in source.`);
         return;
       }
-      const pos = new vscode.Position(lineIdx, 0);
-      await vscode.window.showTextDocument(this.dbmlUri, {
+      const pos = new vscode.Position(loc.line, 0);
+      await vscode.window.showTextDocument(loc.uri, {
         viewColumn: vscode.ViewColumn.One,
         preserveFocus: false,
         selection: new vscode.Range(pos, pos),
@@ -381,10 +366,4 @@ function generateNonce(): string {
   let s = '';
   for (let i = 0; i < 32; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
   return s;
-}
-
-function splitQualified(qn: string): [string, string] {
-  const idx = qn.indexOf('.');
-  if (idx < 0) return ['public', qn];
-  return [qn.slice(0, idx), qn.slice(idx + 1)];
 }

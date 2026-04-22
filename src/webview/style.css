@@ -65,13 +65,32 @@ body.ddd-is-dragging .ddd-table:not(:active) { pointer-events: none; }
   border-bottom: 1px solid var(--ddd-border);
   white-space: nowrap;
   overflow: hidden;
+  position: relative;
 }
 .ddd-table__header .ddd-table__title {
   flex: 1;
   overflow: hidden;
   min-width: 0;
 }
-.ddd-table__gear {
+.ddd-table__actions {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 0 14px;
+  background: var(--ddd-bg-header);
+  box-shadow: -12px 0 10px 4px var(--ddd-bg-header);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.ddd-table__header.is-hovered .ddd-table__actions { opacity: 1; pointer-events: auto; }
+.ddd-table__gear,
+.ddd-table__goto,
+.ddd-table__info {
   background: transparent;
   border: none;
   color: var(--ddd-fg-muted);
@@ -82,7 +101,23 @@ body.ddd-is-dragging .ddd-table:not(:active) { pointer-events: none; }
   align-items: center;
   justify-content: center;
 }
-.ddd-table__gear:hover { color: var(--ddd-fg); background: rgba(255,255,255,0.06); }
+.ddd-table__gear:hover,
+.ddd-table__goto:hover,
+.ddd-table__info:hover { color: var(--ddd-fg); background: rgba(255,255,255,0.10); }
+.ddd-name-tip {
+  position: fixed;
+  z-index: 200;
+  background: var(--vscode-editorHoverWidget-background, #1e1e2e);
+  color: var(--ddd-fg);
+  border: 1px solid var(--ddd-border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
 .ddd-table__schema { color: var(--ddd-fg-muted); font-weight: 400; }
 
 .ddd-table__cols {
@@ -725,6 +760,7 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
   padding: 4px 0 6px;
   max-height: 50vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-top: 1px solid var(--ddd-border);
 }
 .ddd-group-chevron {
@@ -790,6 +826,12 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
   flex-shrink: 0;
   display: inline-block;
   border: 1px solid rgba(0,0,0,0.2);
+  cursor: pointer;
+  padding: 0;
+}
+.ddd-group-swatch:hover {
+  border-color: rgba(255,255,255,0.4);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
 }
 .ddd-group-name {
   flex: 1;
