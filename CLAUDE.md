@@ -4,92 +4,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**DBML Extension** (`dbmlx`) is a VSCode extension that visualizes `.dbmlx` database schema files as interactive diagrams with persistent, Git-friendly table layouts. It is DDD-aware: `TableGroup` in dbmlx maps to bounded contexts that can be collapsed or hidden.
+**DBML Extension** (`dbmlx`) is a VSCode extension that visualizes `.dbmlx` schema files as interactive diagrams with persistent, Git-friendly layouts. DDD-aware: `TableGroup` maps to bounded contexts (collapse/hide).
 
-The `.dbmlx` language is a superset of DBML: all standard DBML syntax is valid, plus `!include`, `DiagramView`, and migration diff annotations (`[add]`, `[drop]`, `[modify: ...]`).
+`.dbmlx` is a superset of DBML: adds `!include`, `DiagramView`, and migration diff annotations:
+- `[add]` — column or whole table is new (green + `+NEW` badge)
+- `[drop]` — column or whole table removed (red strikethrough + `DROP` badge)
+- `[modify: key=value, ...]` — column changed; keys: `name`, `type`, `default`, `pk`, `not_null`, `unique`, `increment` (all store the **old** value)
 
-Migration diff annotations — write column in its **new** state, record old values in the annotation:
-- `[add]` — column or **entire table** is new (green accent / green border + `+NEW` badge)
-- `[drop]` — column or **entire table** is removed (red strikethrough / red border + `DROP` badge)
-- `[modify: key=value, ...]` — column was changed; before/after diff rendered in amber
+`[add]`/`[drop]` on the `Table` declaration line marks the whole table.
 
-`[add]`/`[drop]` on the `Table` declaration line marks the whole table:
-```dbmlx
-Table audit_log [add] { ... }   // whole table is new
-Table old_cache [drop] { ... }  // whole table is removed
-```
-
-`modify:` keys (all optional, any order, combine freely with standard settings like `[pk, not null, modify: ...]`):
-
-| Key | Format | Meaning |
-|---|---|---|
-| `name` | `name="old"` | column was named this before |
-| `type` | `type="old"` | column had this type before |
-| `default` | `default="old"` | column had this default before |
-| `pk` | `pk=true\|false` | pk status before the change |
-| `not_null` | `not_null=true\|false` | not-null status before |
-| `unique` | `unique=true\|false` | unique status before |
-| `increment` | `increment=true\|false` | auto-increment status before |
-
-Key differentiators over existing extensions:
-- Layout persisted in a sidecar `<name>.dbmlx.layout.json` with stable-ordered JSON (Git-friendly diffs)
-- `TableGroup` collapse to single box-node + hide
-- Viewport culling + LOD rendering targeting 5000+ tables at 60fps
+Key differentiators: layout in sidecar `.layout.json` (stable JSON, Git-friendly), `TableGroup` collapse/hide, viewport culling + LOD for 5000+ tables at 60fps.
 
 ## Commands
 
 ```bash
-# Install dependencies (pnpm required)
-pnpm install
-
-# Build everything (extension host + webview)
-pnpm run build
-
-# Watch mode for development
-pnpm run watch:extension   # esbuild --watch on extension host
-pnpm run watch:webview     # vite --watch on webview
-
-# Type checking only (no emit)
-pnpm run typecheck
-
-# Tests
-pnpm run test              # vitest run (one-shot)
-pnpm run test:watch        # vitest in interactive mode
-
-# Package as .vsix
-pnpm run package
-
-# Launch dev environment
-# Press F5 in VSCode to launch Extension Development Host
+pnpm install          # install deps (pnpm only — never npm/yarn)
+pnpm run build        # build extension host + webview
+pnpm run watch:extension   # esbuild --watch
+pnpm run watch:webview     # vite --watch
+pnpm run typecheck    # type check only
+pnpm run test         # vitest one-shot
+pnpm run test:watch   # vitest interactive
+pnpm run package      # build .vsix
+# F5 in VSCode → Extension Development Host
 ```
 
 ## Architecture
 
-### Two isolated runtimes
-
-```
-Extension Host (Node.js)          Webview (Chromium sandbox)
-  src/extension/                    src/webview/
-  - Parses dbmlx (@dbml/core)       - Renders diagram (Preact)
-  - Reads/writes layout JSON        - Spatial index + viewport culling
-  - File system watchers            - Drag, LOD, edge routing
-       ↕ postMessage (JSON)
-  src/shared/types.ts  ← shared TypeScript types
-```
-
-The webview has no direct FS access. All I/O goes through `postMessage` typed in `src/shared/types.ts`.
-
-### Host → Webview messages
-- `schema:update` — parsed schema after dbmlx save
-- `layout:loaded` — sidecar JSON on open
-- `layout:external-change` — sidecar changed externally (git pull)
-- `theme:change` — VSCode theme switch
-
-### Webview → Host messages
-- `ready` — webview initialized
-- `layout:persist` — position deltas, debounced 300ms
-- `command:reveal` — click table → go-to-definition in editor
-- `error:log` — errors from webview to host
+Two isolated runtimes communicating via `postMessage` (types in `src/shared/types.ts`):
+- **Extension Host** (`src/extension/`): parses dbmlx, reads/writes layout JSON, file watchers
+- **Webview** (`src/webview/`): Preact rendering, spatial index, viewport culling, drag, LOD, edge routing
 
 ### Key files
 
@@ -106,69 +50,27 @@ The webview has no direct FS access. All I/O goes through `postMessage` typed in
 | `src/webview/layout/autoLayout.ts` | Dagre top-down; runs only for tables lacking a saved position |
 | `src/webview/groups/groupPanel.tsx` | Group list UI; collapse/hide toggles; color swatch is the color picker |
 
-### Layout file format
-
-Sidecar `schema.dbmlx.layout.json` — keys alphabetically sorted, integers for coords, `collapsed: false` / `hidden: false` omitted, colors only written when custom. Written atomically (tmp → rename). Roundtrip must be byte-identical (tested).
-
-```json
-{
-  "version": 1,
-  "viewport": { "x": 0, "y": 0, "zoom": 1.0 },
-  "tables": { "public.users": { "x": 120, "y": 80 } },
-  "groups": { "billing": { "collapsed": true, "color": "#D0E8FF" } }
-}
-```
-
-### Rendering pipeline
-
-1. Schema update → store
-2. New tables without positions → dagre auto-layout (effect, not render path)
-3. `positions` or `schema` change → rebuild spatial index
-4. Viewport change → query spatial index (bbox + 256px margin) → `visibleNames`
-5. Render: filter `schema.tables` by `visibleNames`; `edgeLayer` filters refs similarly
-6. LOD per table based on zoom; drag bypasses Preact via direct DOM mutation
-
 ### Table header action icons
 
-Three icon buttons — **ⓘ info**, **go-to-definition**, **palette** — live in a `.ddd-table__actions` container that is `position: absolute` on the right edge of the header and fades in on mouse-enter (`.is-hovered` class toggled by `TableNode`). The container carries the shared background and left-fade `box-shadow`; individual buttons are transparent.
+`.ddd-table__actions` (absolute, right edge of header) fades in on `.is-hovered` (set on `TableNode` outer div). Three buttons: **ⓘ info** (click-to-toggle tooltip with full/rename name), **go-to-definition**, **palette**. Names >20 chars are mid-truncated via `midTruncate()`; rename diffs truncate each side to 10.
 
-- **Info (ⓘ)**: click-to-toggle tooltip (portal to `document.body`) showing the full qualified name or `old → new` for renames. Dismissed by `pointerdown` or `wheel` anywhere.
-- Table names longer than 20 chars are mid-truncated (`add…contracts`) via `midTruncate()`. Rename diffs truncate each side to 10 chars.
-- The `.is-hovered` class is set on `TableNode` (outer div) mouse-enter/leave, not on `TableHeader`, so the hover zone covers the full table card.
+### Layout file format
 
-### Performance targets
-
-- 60fps pan/zoom with 5000 tables
-- Webview bundle gzipped < 40KB (Preact not React, Zustand vanilla)
-- Layout write < 50ms (atomic I/O)
-
-## Test fixtures
-
-| Fixture | Tables | Use |
-|---|---|---|
-| `test/fixtures/tiny.dbmlx` | 5 | smoke tests |
-| `test/fixtures/medium.dbmlx` | ~200 | daily regression |
-| `test/fixtures/huge.dbmlx` | ~5000 | stress test (generated) |
+Keys alphabetically sorted, integers for coords, `collapsed: false`/`hidden: false` omitted, colors only when custom. Written atomically (tmp → rename). Roundtrip must be byte-identical.
 
 ## Export sync rule — MANDATORY
 
-`src/webview/render/exportSvg.ts` is a **completely standalone SVG/PNG rendering path** that does NOT share Preact components with the live webview. Every time the live diagram rendering changes, `exportSvg.ts` **must** be updated in the same task to match. This has been missed twice and caused bugs.
+`src/webview/render/exportSvg.ts` is a **standalone SVG/PNG path** — does NOT share Preact components. Every visual change to the live diagram **must** be mirrored in `exportSvg.ts` in the same task. Missed twice, caused bugs.
 
-**What to keep in sync:**
-- Table height: use `tableActualHeight(t)` (not `estimateSize(colCount)`) whenever rows have variable height
-- Column Y positions: use `colRowY(t, ci)` (not `i * TABLE_ROW_H`) to accumulate variable-height rows
-- All column visual states: migration diff (add/drop/modify), PK icons, badges, etc.
-- Edge bounding boxes in `bboxOf` must use the actual table height — wrong height misaligns edge attachment points
-- Table decorations: color accents, change badges, group containers
-- Edge markers and cardinality labels
+**Keep in sync:** table heights (`tableActualHeight(t)`), column Y positions (`colRowY(t, ci)`), all column visual states (add/drop/modify, PK icons, badges), edge bboxes in `bboxOf`, table decorations, edge markers/cardinality labels.
 
-**Trigger:** Any change to `tableNode.tsx`, `edgeLayer.tsx`, `edgeRouter.ts`, or any new visual state on tables/columns/edges.
+**Trigger:** any change to `tableNode.tsx`, `edgeLayer.tsx`, `edgeRouter.ts`, or any new visual state on tables/columns/edges.
 
 ## Notes
 
-- **pnpm only** — do not use npm or yarn
-- `@dbml/core` runs in the extension host only; it is not bundled into the webview
-- `@dagrejs/dagre` runs in the webview; keep it there; move to Web Worker only if initial layout causes jank
-- Drag uses direct DOM mutation (`transform` style) and only calls the Zustand store on `pointerup` — do not move this logic into the render cycle
-- Spatial index must never rebuild on viewport change (pan/zoom) — only on `schema` or `positions` changes
-- The specs in `specs/` are written in Spanish; translations are summarized in this file
+- **pnpm only** — never npm or yarn
+- `@dbml/core` runs in extension host only — not in webview
+- `@dagrejs/dagre` runs in webview only
+- Drag uses direct DOM mutation — do not move into the render cycle
+- Spatial index must never rebuild on viewport change — only on `schema` or `positions` changes
+- Specs in `specs/` are written in Spanish
