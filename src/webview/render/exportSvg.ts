@@ -317,7 +317,8 @@ export function generateSvg(state: AppState): string {
         if (col.pk) {
           const iconX = x + 8 + col.name.length * 6.6 + 4;
           const iconY = ry + TABLE_ROW_H + 5;
-          L.push(`  <g transform="translate(${iconX},${iconY}) scale(0.625)"><path d="M10.5 2a3.5 3.5 0 0 0-3.37 4.48L2 11.61V14h2v-1h1v-1h1v-1h1v-1.12l1.02-1.02A3.5 3.5 0 1 0 10.5 2zm0 1a2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1-.8-.13L8.5 9.06V10H7.5v1H6.5v1H5.5v1H3v-.97l5.26-5.26A2.5 2.5 0 0 1 10.5 3zM11 4.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" fill="${pkColor}"/></g>`);
+          const afterPkColor = !fromPk ? migAdd : pkColor;
+          L.push(`  <g transform="translate(${iconX},${iconY}) scale(0.625)"><path d="M10.5 2a3.5 3.5 0 0 0-3.37 4.48L2 11.61V14h2v-1h1v-1h1v-1h1v-1.12l1.02-1.02A3.5 3.5 0 1 0 10.5 2zm0 1a2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1-.8-.13L8.5 9.06V10H7.5v1H6.5v1H5.5v1H3v-.97l5.26-5.26A2.5 2.5 0 0 1 10.5 3zM11 4.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z" fill="${afterPkColor}"/></g>`);
         }
         let afterRightX = x + w - 8;
         if (col.unique) { L.push(`  <text x="${afterRightX}" y="${ry + TABLE_ROW_H + 14}" font-family="ui-monospace,monospace,sans-serif" font-size="9" fill="${migModify}" opacity="0.85" text-anchor="end">U</text>`); afterRightX -= 14; }

@@ -269,7 +269,7 @@ function ColumnRow({ col, isFk, change, pkIndexChange }: { col: Column; isFk: bo
         <div class="ddd-col__after">
           <span class="ddd-table__col-left">
             <span class={`ddd-table__col-name${col.pk ? ' is-pk' : ''}`}>{col.name}</span>
-            {col.pk ? <IconKey size={10} /> : null}
+            {col.pk && !fromPk ? <span class="ddd-pk--add"><IconKey size={10} /></span> : col.pk ? <IconKey size={10} /> : null}
             {col.note ? <IconNote size={10} /> : null}
           </span>
           <span class="ddd-table__col-right">
