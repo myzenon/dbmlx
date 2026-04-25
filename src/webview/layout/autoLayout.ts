@@ -126,17 +126,18 @@ function runSnowflake(
     return { w: maxX, h: maxY };
   }
 
-  // Half-diagonal of a bbox — used as the circumscribed circle radius for collision
-  const halfDiag = (b: { w: number; h: number }) => Math.sqrt(b.w * b.w + b.h * b.h) / 2;
+  // Half-extent used for ring collision: max(w,h)/2 is a tighter bound than the
+  // circumscribed circle (sqrt(w²+h²)/2), which over-estimates by up to 41%.
+  const halfDiag = (b: { w: number; h: number }) => Math.max(b.w, b.h) / 2;
 
   // BFS on super-nodes
   const visited = new Set<string>();
-  const levels: string[][] = [];
+  const bfsLevels: string[][] = [];
   let frontier = [sortedSupers[0]!];
   visited.add(sortedSupers[0]!);
 
   while (frontier.length > 0) {
-    levels.push(frontier);
+    bfsLevels.push(frontier);
     const next: string[] = [];
     for (const s of frontier) {
       for (const nb of superAdj.get(s) ?? []) {
@@ -146,7 +147,17 @@ function runSnowflake(
     frontier = next;
   }
 
-  const GAP = 80; // minimum clear gap between any two bbox circumscribed circles
+  // Split large BFS levels into smaller rings so sin(π/n) stays large.
+  // Without capping, a level of 30 nodes gives sin(π/30)≈0.1 → rAngular 10× larger.
+  const RING_MAX = 8;
+  const levels: string[][] = [];
+  for (const lvl of bfsLevels) {
+    for (let start = 0; start < lvl.length; start += RING_MAX) {
+      levels.push(lvl.slice(start, start + RING_MAX));
+    }
+  }
+
+  const GAP = 48; // minimum clear gap between node bboxes
   const superPos = new Map<string, { cx: number; cy: number }>();
 
   // Track the outer circumscribed boundary of the previous ring so the next ring

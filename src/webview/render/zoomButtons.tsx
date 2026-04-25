@@ -29,6 +29,14 @@ function ArrangePicker({ onClose }: { onClose: () => void }) {
     store.getState().resetPositions();
     schedulePersist();
     onClose();
+    // Fit to content after the layout useEffect repopulates positions.
+    const unsub = store.subscribe((state, prev) => {
+      if (state.positions !== prev.positions && state.positions.size > 0) {
+        unsub();
+        const el = document.querySelector<HTMLElement>('.ddd-viewport');
+        if (el) fitToContent(el);
+      }
+    });
   };
 
   return (

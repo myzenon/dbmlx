@@ -272,6 +272,85 @@ export function routeRefs(
     for (const i of idxs) srcConvergeMidX.set(i, trunkX);
   }
 
+  // 4b. De-coincide convergence trunks: when multiple target-convergence groups share the
+  // same trunkX (because their target tables are at the same X, so each group independently
+  // computes target.x ± TRUNK_OFFSET to the same value), stagger the trunks apart so they
+  // don't draw on top of each other and appear as a single merged line.
+  const TRUNK_STAGGER = 12;
+
+  const tgtTrunkGroups = new Map<number, number[][]>(); // trunkX → list of per-group edge-index arrays
+  for (const [, idxs] of tgtConvergeBuckets) {
+    if (idxs.length < 2) continue;
+    const trunkX = tgtConvergeMidX.get(idxs[0]!)!;
+    let g = tgtTrunkGroups.get(trunkX);
+    if (!g) { g = []; tgtTrunkGroups.set(trunkX, g); }
+    g.push(idxs);
+  }
+  for (const [, groups] of tgtTrunkGroups) {
+    if (groups.length < 2) continue;
+    const n = groups.length;
+    for (let j = 0; j < n; j++) {
+      const dx = Math.round((j - (n - 1) / 2) * TRUNK_STAGGER);
+      for (const i of groups[j]!) tgtConvergeMidX.set(i, tgtConvergeMidX.get(i)! + dx);
+    }
+  }
+
+  const srcTrunkGroups = new Map<number, number[][]>();
+  for (const [, idxs] of srcConvergeBuckets) {
+    if (idxs.length < 2) continue;
+    const trunkX = srcConvergeMidX.get(idxs[0]!)!;
+    let g = srcTrunkGroups.get(trunkX);
+    if (!g) { g = []; srcTrunkGroups.set(trunkX, g); }
+    g.push(idxs);
+  }
+  for (const [, groups] of srcTrunkGroups) {
+    if (groups.length < 2) continue;
+    const n = groups.length;
+    for (let j = 0; j < n; j++) {
+      const dx = Math.round((j - (n - 1) / 2) * TRUNK_STAGGER);
+      for (const i of groups[j]!) srcConvergeMidX.set(i, srcConvergeMidX.get(i)! + dx);
+    }
+  }
+
+  // 4c. De-coincide: stagger non-convergence edges whose vertical segments share the same
+  // midX AND have overlapping Y ranges. Prevents unrelated FK lines from appearing merged
+  // when the layout engine places unrelated tables at the same X rank.
+  const COINCIDE_SEP = 8;
+  const tentativeMidX: Array<number | null> = ported.map((p, i) => {
+    if (!p) return null;
+    if (tgtConvergeGroupOf.has(i)) return tgtConvergeMidX.get(i)!;
+    if (srcConvergeGroupOf.has(i)) return srcConvergeMidX.get(i)!;
+    return Math.round((p.a.x + p.b.x) / 2 + p.userDx + (midXOffset.get(i) ?? 0));
+  });
+
+  const coincideMap = new Map<number, number[]>();
+  for (let i = 0; i < tentativeMidX.length; i++) {
+    const mx = tentativeMidX[i];
+    if (mx == null || tgtConvergeGroupOf.has(i) || srcConvergeGroupOf.has(i)) continue;
+    const mxKey: number = mx;
+    let bucket = coincideMap.get(mxKey);
+    if (!bucket) { bucket = []; coincideMap.set(mxKey, bucket); }
+    bucket.push(i);
+  }
+
+  const coincideExtra = new Map<number, number>();
+  for (const [, idxs] of coincideMap) {
+    if (idxs.length < 2) continue;
+    let hasOverlap = false;
+    outer: for (let j = 0; j < idxs.length; j++) {
+      const pj = ported[idxs[j]!]!;
+      const jMinY = Math.min(pj.a.y, pj.b.y), jMaxY = Math.max(pj.a.y, pj.b.y);
+      for (let k = j + 1; k < idxs.length; k++) {
+        const pk = ported[idxs[k]!]!;
+        const kMinY = Math.min(pk.a.y, pk.b.y), kMaxY = Math.max(pk.a.y, pk.b.y);
+        if (Math.min(jMaxY, kMaxY) > Math.max(jMinY, kMinY)) { hasOverlap = true; break outer; }
+      }
+    }
+    if (!hasOverlap) continue;
+    const n = idxs.length;
+    for (let j = 0; j < n; j++) coincideExtra.set(idxs[j]!, Math.round((j - (n - 1) / 2) * COINCIDE_SEP));
+  }
+
   // 5. build paths
   const out: EdgeRoute[] = [];
   for (let i = 0; i < decisions.length; i++) {
@@ -289,7 +368,7 @@ export function routeRefs(
       ? tgtConvergeMidX.get(i)!
       : isSrcConverge
         ? srcConvergeMidX.get(i)!
-        : Math.round((a.x + b.x) / 2 + userDx + (midXOffset.get(i) ?? 0));
+        : Math.round((a.x + b.x) / 2 + userDx + (midXOffset.get(i) ?? 0) + (coincideExtra.get(i) ?? 0));
 
     const path = `M${a.x},${a.y} H${midX} V${b.y} H${b.x}`;
     // Converge edges share a fixed trunk — suppress drag handle so edges move together.
