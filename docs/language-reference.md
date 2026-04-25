@@ -282,6 +282,40 @@ The before/after diff display uses these values:
 | `[drop]` | Column being removed. Will not exist after migration. | Red strikethrough |
 | `[modify: ...]` | Column was changed. Write new state on the line; record old values inside `modify:`. | Two-row display: original (muted strikethrough) → new (amber) |
 
+### Index-level annotations
+
+`[add]` and `[drop]` can appear on index lines inside `Indexes { }` blocks to annotate PK index changes:
+
+```dbmlx
+Table orders {
+  domain_id  int  [pk]      // standalone pk — unchanged
+  user_id    int             // not pk after migration
+
+  Indexes {
+    (domain_id, user_id) [pk, drop]
+    // ↑ composite PK index being dropped.
+    //   domain_id still has its standalone [pk], so it stays a PK.
+    //   user_id had pk only via this index — loses PK status, shown with a red key icon.
+
+    domain_id [pk, add]
+    // ↑ new PK index being added — affected columns gain a green key icon.
+  }
+}
+```
+
+**Semantics:**
+- `[drop]` on an index — the index is removed from the post-migration schema. Any column whose `pk` status came **only** from that index (not from a standalone `[pk]`) loses PK status and shows a **red key icon**.
+- `[add]` on an index — the index is new in the post-migration schema. Columns that gain PK status show a **green key icon**.
+- A column with both a standalone `[pk]` and a dropped composite index keeps its PK status from the standalone flag — the red icon is suppressed.
+
+The `[modify: pk=false]` column annotation follows the same color convention: when a column gains PK in the migration (`fromPk=false`, column has `[pk]`), the "after" row key icon is **green**.
+
+| Annotation | Scope | Visual |
+|---|---|---|
+| `(cols) [pk, drop]` inside `Indexes {}` | Index being removed | Affected columns show red key icon |
+| `(cols) [pk, add]` inside `Indexes {}` | Index being added | Affected columns show green key icon |
+| `[pk, modify: pk=false]` on a column | Column gaining PK | "After" row key icon is green |
+
 ### Table-level annotations
 
 `[add]`, `[drop]`, and `[modify: name="old"]` can appear on the `Table` declaration line:

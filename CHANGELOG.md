@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.17] - 2026-04-25
+
+### Added
+- **Index-level `[add]`/`[drop]` annotations**: annotate `Indexes {}` entries with `[add]` or `[drop]` to show PK index changes as visual diffs. A dropped composite PK index renders a red key icon on columns that lose PK status; a new added index renders a green key icon on columns gaining PK status. Columns with a standalone `[pk]` flag are unaffected by a dropped index.
+- **Green key icon for pk gain via `[modify:]`**: when a column annotation shows `[pk, modify: pk=false]` (pk going from false → true), the "after" row key icon is now green, consistent with index-level pk-add styling.
+
 ## [0.1.16] - 2026-04-22
 
 ### Added
