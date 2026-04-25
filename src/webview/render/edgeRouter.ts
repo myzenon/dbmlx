@@ -11,6 +11,22 @@ export interface EdgeRoute {
   /** Resolved port coordinates (world space), useful for hit-testing / highlighting. */
   source: { x: number; y: number; side: Side };
   target: { x: number; y: number; side: Side };
+  /**
+   * Set when multiple edges arrive at the same target column (Supabase-style convergence).
+   * All edges in the group share the same tail (trunkX → tgtY → tgtX).
+   */
+  convergeGroupId?: string;
+  /**
+   * Set when multiple edges depart from the same source column (mirror of convergeGroupId).
+   * All edges in the group share the same head (srcX → srcY → trunkX).
+   */
+  sourceConvergeGroupId?: string;
+  /**
+   * The world-space point where this edge's converge trunk meets the fanning-out branch.
+   * Renderers should draw a filled junction dot here (once per group) so the user can
+   * clearly see which table is the shared hub vs the individual spokes.
+   */
+  convergeJunction?: { x: number; y: number };
 }
 
 /** Optional per-endpoint port override — used to align edges with the PK/FK column row. */
@@ -37,6 +53,7 @@ export function routeRefs(
   bboxOf: (name: QualifiedName) => Bbox | undefined,
   columnYResolver?: ColumnYResolver,
   offsetResolver?: EdgeOffsetResolver,
+  merge = true,
 ): EdgeRoute[] {
   // 1. decide sides for each edge
   const decisions: Array<{ ref: Ref; srcBbox: Bbox; tgtBbox: Bbox; sourceSide: Side; targetSide: Side } | null> = [];
@@ -101,8 +118,17 @@ export function routeRefs(
   const BUNDLE_SEP = 16; // px between parallel edges on the same pair of tables
   const PORT_SEP = 6;    // px between edges sharing the exact same column port
 
-  // Compute raw port points for every edge
-  type PortedEdge = { idx: number; a: { x: number; y: number }; b: { x: number; y: number }; userDx: number };
+  // Compute raw port points for every edge.
+  // sourceConvergeKey / targetConvergeKey are set when the respective column Y is resolved
+  // — used to group edges that share a common endpoint column.
+  type PortedEdge = {
+    idx: number;
+    a: { x: number; y: number };
+    b: { x: number; y: number };
+    userDx: number;
+    sourceConvergeKey?: string; // edges sharing the same SOURCE column
+    targetConvergeKey?: string; // edges sharing the same TARGET column
+  };
   const ported: Array<PortedEdge | null> = [];
 
   for (let i = 0; i < decisions.length; i++) {
@@ -112,24 +138,66 @@ export function routeRefs(
 
     let sourceY: number | undefined;
     let targetY: number | undefined;
+    let sourceConvergeKey: string | undefined;
+    let targetConvergeKey: string | undefined;
+
     if (columnYResolver) {
       if (assign.sourceSide === 'left' || assign.sourceSide === 'right') {
-        const offset = d.ref.source.columns[0] ? columnYResolver(d.ref.source.table, d.ref.source.columns[0]) : undefined;
-        if (offset !== undefined) sourceY = d.srcBbox.y + offset;
+        const sourceCol = d.ref.source.columns[0];
+        const offset = sourceCol ? columnYResolver(d.ref.source.table, sourceCol) : undefined;
+        if (offset !== undefined) {
+          sourceY = d.srcBbox.y + offset;
+          sourceConvergeKey = `${d.ref.source.table}|${assign.sourceSide}|${sourceCol}`;
+        }
       }
       if (assign.targetSide === 'left' || assign.targetSide === 'right') {
-        const offset = d.ref.target.columns[0] ? columnYResolver(d.ref.target.table, d.ref.target.columns[0]) : undefined;
-        if (offset !== undefined) targetY = d.tgtBbox.y + offset;
+        const targetCol = d.ref.target.columns[0];
+        const offset = targetCol ? columnYResolver(d.ref.target.table, targetCol) : undefined;
+        if (offset !== undefined) {
+          targetY = d.tgtBbox.y + offset;
+          targetConvergeKey = `${d.ref.target.table}|${assign.targetSide}|${targetCol}`;
+        }
       }
     }
 
     const a = portPoint(d.srcBbox, assign.sourceSide, assign.sourceRatio, sourceY);
     const b = portPoint(d.tgtBbox, assign.targetSide, assign.targetRatio, targetY);
     const userDx = offsetResolver?.(d.ref.id)?.dx ?? 0;
-    ported.push({ idx: i, a, b, userDx });
+    ported.push({ idx: i, a, b, userDx, sourceConvergeKey, targetConvergeKey });
   }
 
-  // Stagger Y for edges that share the exact same source port (same column override)
+  // Build converge groups for both ends. Only groups with ≥2 members are active.
+  function buildConvergeGroups(keyOf: (p: PortedEdge) => string | undefined): {
+    buckets: Map<string, number[]>;
+    groupOf: Map<number, string>;
+  } {
+    const buckets = new Map<string, number[]>();
+    for (let i = 0; i < ported.length; i++) {
+      const p = ported[i];
+      if (!p) continue;
+      const key = keyOf(p);
+      if (!key) continue;
+      let bucket = buckets.get(key);
+      if (!bucket) { bucket = []; buckets.set(key, bucket); }
+      bucket.push(i);
+    }
+    const groupOf = new Map<number, string>();
+    for (const [key, idxs] of buckets) {
+      if (idxs.length < 2) continue;
+      for (const i of idxs) groupOf.set(i, key);
+    }
+    return { buckets, groupOf };
+  }
+
+  const { buckets: tgtConvergeBuckets, groupOf: tgtConvergeGroupOf } = merge
+    ? buildConvergeGroups((p) => p.targetConvergeKey)
+    : { buckets: new Map<string, number[]>(), groupOf: new Map<number, string>() };
+  const { buckets: srcConvergeBuckets, groupOf: srcConvergeGroupOf } = merge
+    ? buildConvergeGroups((p) => p.sourceConvergeKey)
+    : { buckets: new Map<string, number[]>(), groupOf: new Map<number, string>() };
+
+  // Stagger Y for edges sharing the exact same source port — but skip source-converge members
+  // (they must all stay at the same Y to form the shared trunk head).
   const srcPortGroups = new Map<string, number[]>();
   for (let i = 0; i < ported.length; i++) {
     const p = ported[i];
@@ -140,13 +208,14 @@ export function routeRefs(
   }
   for (const [, idxs] of srcPortGroups) {
     if (idxs.length < 2) continue;
-    const n = idxs.length;
+    const toStagger = idxs.filter((i) => !srcConvergeGroupOf.has(i));
+    const n = toStagger.length;
     for (let i = 0; i < n; i++) {
-      ported[idxs[i]!]!.a.y += Math.round((i - (n - 1) / 2) * PORT_SEP);
+      ported[toStagger[i]!]!.a.y += Math.round((i - (n - 1) / 2) * PORT_SEP);
     }
   }
 
-  // Same for target ports
+  // Same for target ports — skip target-converge members.
   const tgtPortGroups = new Map<string, number[]>();
   for (let i = 0; i < ported.length; i++) {
     const p = ported[i];
@@ -157,9 +226,10 @@ export function routeRefs(
   }
   for (const [, idxs] of tgtPortGroups) {
     if (idxs.length < 2) continue;
-    const n = idxs.length;
+    const toStagger = idxs.filter((i) => !tgtConvergeGroupOf.has(i));
+    const n = toStagger.length;
     for (let i = 0; i < n; i++) {
-      ported[idxs[i]!]!.b.y += Math.round((i - (n - 1) / 2) * PORT_SEP);
+      ported[toStagger[i]!]!.b.y += Math.round((i - (n - 1) / 2) * PORT_SEP);
     }
   }
 
@@ -182,6 +252,26 @@ export function routeRefs(
     }
   }
 
+  // Compute a shared trunk X for each converge group (both source-side and target-side).
+  // The trunk sits TRUNK_OFFSET px outside the shared-endpoint table edge.
+  const TRUNK_OFFSET = 60;
+  const tgtConvergeMidX = new Map<number, number>();
+  for (const [, idxs] of tgtConvergeBuckets) {
+    if (idxs.length < 2) continue;
+    const first = ported[idxs[0]!]!;
+    const assign = portAssign[idxs[0]!]!;
+    const trunkX = assign.targetSide === 'left' ? first.b.x - TRUNK_OFFSET : first.b.x + TRUNK_OFFSET;
+    for (const i of idxs) tgtConvergeMidX.set(i, trunkX);
+  }
+  const srcConvergeMidX = new Map<number, number>();
+  for (const [, idxs] of srcConvergeBuckets) {
+    if (idxs.length < 2) continue;
+    const first = ported[idxs[0]!]!;
+    const assign = portAssign[idxs[0]!]!;
+    const trunkX = assign.sourceSide === 'left' ? first.a.x - TRUNK_OFFSET : first.a.x + TRUNK_OFFSET;
+    for (const i of idxs) srcConvergeMidX.set(i, trunkX);
+  }
+
   // 5. build paths
   const out: EdgeRoute[] = [];
   for (let i = 0; i < decisions.length; i++) {
@@ -191,11 +281,37 @@ export function routeRefs(
     const assign = portAssign[i]!;
 
     const { a, b, userDx } = p;
-    const midX = Math.round((a.x + b.x) / 2 + userDx + (midXOffset.get(i) ?? 0));
-    const path = `M${a.x},${a.y} H${midX} V${b.y} H${b.x}`;
-    const midSeg = { x1: midX, y1: a.y, x2: midX, y2: b.y, axis: 'v' as const };
+    const isTgtConverge = tgtConvergeGroupOf.has(i);
+    const isSrcConverge = srcConvergeGroupOf.has(i);
+    const isAnyConverge = isTgtConverge || isSrcConverge;
 
-    out.push({ id: d.ref.id, d: path, midSeg, source: { ...a, side: assign.sourceSide }, target: { ...b, side: assign.targetSide } });
+    const midX = isTgtConverge
+      ? tgtConvergeMidX.get(i)!
+      : isSrcConverge
+        ? srcConvergeMidX.get(i)!
+        : Math.round((a.x + b.x) / 2 + userDx + (midXOffset.get(i) ?? 0));
+
+    const path = `M${a.x},${a.y} H${midX} V${b.y} H${b.x}`;
+    // Converge edges share a fixed trunk — suppress drag handle so edges move together.
+    const midSeg = isAnyConverge ? undefined : { x1: midX, y1: a.y, x2: midX, y2: b.y, axis: 'v' as const };
+
+    // Junction dot position: the corner where the shared trunk meets the individual spokes.
+    // Source-converge: trunk departs from shared srcY → junction at (trunkX, srcY).
+    // Target-converge: individual paths converge at tgtY → junction at (trunkX, tgtY).
+    let convergeJunction: { x: number; y: number } | undefined;
+    if (isSrcConverge) convergeJunction = { x: midX, y: a.y };
+    else if (isTgtConverge) convergeJunction = { x: midX, y: b.y };
+
+    out.push({
+      id: d.ref.id,
+      d: path,
+      midSeg,
+      source: { ...a, side: assign.sourceSide },
+      target: { ...b, side: assign.targetSide },
+      convergeGroupId: tgtConvergeGroupOf.get(i),
+      sourceConvergeGroupId: srcConvergeGroupOf.get(i),
+      convergeJunction,
+    });
   }
   return out;
 }

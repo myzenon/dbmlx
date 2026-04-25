@@ -32,6 +32,8 @@ export interface AppState {
   showGroupBoundary: boolean;
   /** Ephemeral: show/hide 1-N cardinality labels on relation lines. Not persisted. */
   showCardinalityLabels: boolean;
+  /** Ephemeral: merge convergent FK edges into a shared trunk. Not persisted. */
+  mergeConvergentEdges: boolean;
   /** Active DiagramView name, or null = show all tables. Ephemeral, not persisted. */
   activeView: string | null;
 }
@@ -54,6 +56,7 @@ export interface AppActions {
   setLayoutAlgorithm(algo: LayoutAlgorithm): void;
   setShowGroupBoundary(v: boolean): void;
   setShowCardinalityLabels(v: boolean): void;
+  setMergeConvergentEdges(v: boolean): void;
   resetPositions(): void;
   setActiveView(name: string | null): void;
 }
@@ -75,6 +78,7 @@ const initial: AppState = {
   layoutAlgorithm: 'top-down' as LayoutAlgorithm,
   showGroupBoundary: true,
   showCardinalityLabels: true,
+  mergeConvergentEdges: true,
   activeView: null,
 };
 
@@ -104,6 +108,7 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
       showOnlyPkFk: vs.showOnlyPkFk ?? false,
       showGroupBoundary: vs.showGroupBoundary ?? true,
       showCardinalityLabels: vs.showCardinalityLabels ?? true,
+      mergeConvergentEdges: vs.mergeConvergentEdges ?? true,
     });
   },
   setTablePos(name, x, y) {
@@ -181,6 +186,9 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
   },
   setShowCardinalityLabels(v: boolean) {
     set({ showCardinalityLabels: v });
+  },
+  setMergeConvergentEdges(v: boolean) {
+    set({ mergeConvergentEdges: v });
   },
   resetPositions() {
     set({ positions: new Map() });

@@ -9,6 +9,7 @@ export function ActionsPanel() {
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
   const showGroupBoundary = useAppStore((s) => s.showGroupBoundary);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
+  const mergeConvergentEdges = useAppStore((s) => s.mergeConvergentEdges);
 
   return (
     <div class={`ddd-actions-panel ${open ? 'is-open' : 'is-closed'}`}>
@@ -44,6 +45,14 @@ export function ActionsPanel() {
           >
             <IconFilter size={12} />
             <span>Cardinality</span>
+          </button>
+          <button
+            class={`ddd-actions-btn ${mergeConvergentEdges ? 'is-active' : ''}`}
+            onClick={() => store.getState().setMergeConvergentEdges(!mergeConvergentEdges)}
+            title="Merge FK lines that share the same endpoint column into a single trunk"
+          >
+            <IconFilter size={12} />
+            <span>Merge Lines</span>
           </button>
           <button
             class="ddd-actions-btn"

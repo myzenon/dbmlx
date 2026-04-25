@@ -177,6 +177,7 @@ The actions panel (bottom of the diagram) provides view toggles:
 | **PK/FK only** | Off | Show only primary key and foreign key columns |
 | **Table Groups** | On | Show group boundary boxes; auto-arrange respects group clusters |
 | **Cardinality** | On | Show 1/N labels on relation lines |
+| **Merge Lines** | On | Merge FK lines that share the same endpoint column into a single trunk with a junction dot |
 
 ### Auto-arrange
 

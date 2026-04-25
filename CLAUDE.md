@@ -44,7 +44,7 @@ Two isolated runtimes communicating via `postMessage` (types in `src/shared/type
 | `src/extension/layoutStore.ts` | Atomic read/write of `.layout.json`; stable-ordered JSON |
 | `src/webview/state/store.ts` | Zustand store; granular selectors |
 | `src/webview/render/spatialIndex.ts` | 512×512px grid bucketing; `insert/remove/query(bbox)` |
-| `src/webview/render/edgeRouter.ts` | Manhattan ortho routing (max 2 elbows) |
+| `src/webview/render/edgeRouter.ts` | Manhattan ortho routing (max 2 elbows); source- and target-side convergence merges FK lines that share an endpoint column into a trunk with a junction dot |
 | `src/webview/render/lod.ts` | Zoom thresholds: `full` ≥0.6, `header` 0.3–0.6, `rect` <0.3 |
 | `src/webview/drag/dragController.ts` | Direct DOM mutation during drag; commits to store on `pointerup` |
 | `src/webview/layout/autoLayout.ts` | Dagre top-down; runs only for tables lacking a saved position |
@@ -62,7 +62,7 @@ Keys alphabetically sorted, integers for coords, `collapsed: false`/`hidden: fal
 
 `src/webview/render/exportSvg.ts` is a **standalone SVG/PNG path** — does NOT share Preact components. Every visual change to the live diagram **must** be mirrored in `exportSvg.ts` in the same task. Missed twice, caused bugs.
 
-**Keep in sync:** table heights (`tableActualHeight(t)`), column Y positions (`colRowY(t, ci)`), all column visual states (add/drop/modify, PK icons, badges), edge bboxes in `bboxOf`, table decorations, edge markers/cardinality labels.
+**Keep in sync:** table heights (`tableActualHeight(t)`), column Y positions (`colRowY(t, ci)`), all column visual states (add/drop/modify, PK icons, badges), edge bboxes in `bboxOf`, table decorations, edge markers/cardinality labels, convergence junction dots (`convergeJunction`).
 
 **Trigger:** any change to `tableNode.tsx`, `edgeLayer.tsx`, `edgeRouter.ts`, or any new visual state on tables/columns/edges.
 

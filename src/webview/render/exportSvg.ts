@@ -71,7 +71,7 @@ function esc(s: string): string {
 
 export function generateSvg(state: AppState): string {
   const { schema, positions, hiddenTables, tableColors, groups: grpState, theme, edgeOffsets,
-    showOnlyPkFk, showGroupBoundary, showCardinalityLabels } = state;
+    showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges } = state;
 
   // Build fkColumnsByTable from refs (mirrors app.tsx useMemo)
   const fkColsByTable = new Map<QualifiedName, Set<string>>();
@@ -160,7 +160,7 @@ export function generateSvg(state: AppState): string {
     return colRowY(rt, idx) + (isModify ? TABLE_ROW_H * 1.5 : TABLE_ROW_H / 2);
   };
 
-  const routes = routeRefs(effRefs, bboxOf, columnYResolver, (id) => edgeOffsets.get(id));
+  const routes = routeRefs(effRefs, bboxOf, columnYResolver, (id) => edgeOffsets.get(id), mergeConvergentEdges);
 
   const refById = new Map<string, Ref>();
   for (const r of effRefs) refById.set(r.id, r);
@@ -226,6 +226,8 @@ export function generateSvg(state: AppState): string {
   }
 
   // Edges (draw before tables so tables sit on top)
+  const renderedConvergeTargets = new Set<string>();
+  const renderedConvergeSources = new Set<string>();
   for (const r of routes) {
     const ref = refById.get(r.id);
     const srcRel = ref?.source.relation ?? '1';
@@ -236,10 +238,19 @@ export function generateSvg(state: AppState): string {
     const tgtLabel    = tgtRel === '*' ? 'N' : '1';
     const srcLabelX   = r.source.x + (r.source.side === 'right' ? 16 : -16);
     const tgtLabelX   = r.target.x + (r.target.side === 'right' ? 16 : -16);
-    L.push(`<path d="${r.d}" fill="none" stroke="${edgeLine}" stroke-width="1.5" stroke-linecap="round" marker-start="${startMarker}" marker-end="${endMarker}"/>`);
+    const isTgtConvergeDup = r.convergeGroupId !== undefined && renderedConvergeTargets.has(r.convergeGroupId);
+    if (r.convergeGroupId && !isTgtConvergeDup) renderedConvergeTargets.add(r.convergeGroupId);
+    const isSrcConvergeDup = r.sourceConvergeGroupId !== undefined && renderedConvergeSources.has(r.sourceConvergeGroupId);
+    if (r.sourceConvergeGroupId && !isSrcConvergeDup) renderedConvergeSources.add(r.sourceConvergeGroupId);
+    const activeStartMarker = isSrcConvergeDup ? '' : ` marker-start="${startMarker}"`;
+    const activeEndMarker   = isTgtConvergeDup ? '' : ` marker-end="${endMarker}"`;
+    L.push(`<path d="${r.d}" fill="none" stroke="${edgeLine}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}/>`);
+    if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) {
+      L.push(`<circle cx="${r.convergeJunction.x}" cy="${r.convergeJunction.y}" r="4" fill="${edgeLine}"/>`);
+    }
     if (showCardinalityLabels) {
-      L.push(`<text x="${srcLabelX}" y="${r.source.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${srcLabel}</text>`);
-      L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
+      if (!isSrcConvergeDup) L.push(`<text x="${srcLabelX}" y="${r.source.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${srcLabel}</text>`);
+      if (!isTgtConvergeDup) L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
     }
   }
 

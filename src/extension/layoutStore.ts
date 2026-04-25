@@ -108,6 +108,7 @@ function toViewSettings(raw: unknown): Layout['viewSettings'] {
   if (r.showOnlyPkFk === true) out.showOnlyPkFk = true;
   if (r.showGroupBoundary === false) out.showGroupBoundary = false;
   if (r.showCardinalityLabels === false) out.showCardinalityLabels = false;
+  if (r.mergeConvergentEdges === false) out.mergeConvergentEdges = false;
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -165,6 +166,7 @@ export function serializeLayout(layout: Layout): string {
   if (layout.viewSettings?.showOnlyPkFk === true) vsParts.push('"showOnlyPkFk": true');
   if (layout.viewSettings?.showGroupBoundary === false) vsParts.push('"showGroupBoundary": false');
   if (layout.viewSettings?.showCardinalityLabels === false) vsParts.push('"showCardinalityLabels": false');
+  if (layout.viewSettings?.mergeConvergentEdges === false) vsParts.push('"mergeConvergentEdges": false');
 
   if (edgeEntries.length === 0 && vsParts.length === 0) {
     lines.push('  },');

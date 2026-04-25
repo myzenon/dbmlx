@@ -21,11 +21,12 @@ interface EdgeLayerProps {
   worldBbox: { x: number; y: number; w: number; h: number };
   showOnlyPkFk: boolean;
   fkColumnsByTable: Map<QualifiedName, Set<string>>;
+  mergeConvergentEdges: boolean;
 }
 
 const GROUP_PREFIX = '__group__:';
 
-export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable }: EdgeLayerProps) {
+export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable, mergeConvergentEdges }: EdgeLayerProps) {
   const edgeOffsets = useAppStore((s) => s.edgeOffsets);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
@@ -67,7 +68,7 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
     return colRowY(virtualT, idx) + (isModify ? TABLE_ROW_H * 1.5 : TABLE_ROW_H / 2);
   };
 
-  const routes = routeRefs(refs, bboxOf, columnY, (id) => edgeOffsets.get(id));
+  const routes = routeRefs(refs, bboxOf, columnY, (id) => edgeOffsets.get(id), mergeConvergentEdges);
 
   const refById = new Map<string, Ref>();
   for (const r of refs) refById.set(r.id, r);
@@ -80,6 +81,13 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
     usedLabelSlots.add(key);
     return y - 5;
   };
+
+  // For target-converge groups, only the first edge renders the target marker/label.
+  // For source-converge groups, only the first edge renders the source marker/label.
+  const renderedConvergeTargets = new Set<string>();
+  const renderedConvergeSources = new Set<string>();
+  // Collect one junction point per converge group for the dot overlay.
+  const junctions: Array<{ x: number; y: number }> = [];
 
   return (
     <svg
@@ -107,6 +115,7 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
           <path d="M2,2 L2,10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </marker>
       </defs>
+      {/* Junction dots rendered after all paths so they sit on top */}
       {routes.map((r) => {
         const ref = refById.get(r.id);
         const startMarker = ref?.source.relation === '*' ? 'url(#ddd-mk-many-s)' : 'url(#ddd-mk-one-s)';
@@ -117,16 +126,25 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
         const tgtLabelX = r.target.x + (r.target.side === 'right' ? 16 : -16);
         const srcLabelY = labelY(srcLabelX, r.source.y);
         const tgtLabelY = labelY(tgtLabelX, r.target.y);
+
+        // Suppress duplicate markers/labels for converge groups.
+        const isTgtConvergeDup = r.convergeGroupId !== undefined && renderedConvergeTargets.has(r.convergeGroupId);
+        if (r.convergeGroupId && !isTgtConvergeDup) renderedConvergeTargets.add(r.convergeGroupId);
+        const isSrcConvergeDup = r.sourceConvergeGroupId !== undefined && renderedConvergeSources.has(r.sourceConvergeGroupId);
+        if (r.sourceConvergeGroupId && !isSrcConvergeDup) renderedConvergeSources.add(r.sourceConvergeGroupId);
+        // Collect junction dot once per group (first non-duplicate edge that has a junction).
+        if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) junctions.push(r.convergeJunction);
+
         return (
           <g key={r.id}>
             <path
               d={r.d}
               class="ddd-edge"
-              markerStart={startMarker}
-              markerEnd={endMarker}
+              markerStart={isSrcConvergeDup ? undefined : startMarker}
+              markerEnd={isTgtConvergeDup ? undefined : endMarker}
             />
-            {showCardinalityLabels ? <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text> : null}
-            {showCardinalityLabels ? <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text> : null}
+            {showCardinalityLabels && !isSrcConvergeDup ? <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text> : null}
+            {showCardinalityLabels && !isTgtConvergeDup ? <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text> : null}
             {r.midSeg ? (
               <line
                 class="ddd-edge-handle"
@@ -140,6 +158,9 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
           </g>
         );
       })}
+      {junctions.map((j, idx) => (
+        <circle key={`jct-${idx}`} class="ddd-edge-junction" cx={j.x} cy={j.y} r={4} />
+      ))}
     </svg>
   );
 }

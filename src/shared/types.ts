@@ -121,6 +121,7 @@ export interface ViewSettings {
   showOnlyPkFk?: boolean;
   showGroupBoundary?: boolean;
   showCardinalityLabels?: boolean;
+  mergeConvergentEdges?: boolean;
 }
 
 export interface Layout {

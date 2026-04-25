@@ -339,6 +339,9 @@ The diagram stores table positions, viewport state, group state, and edge offset
 {
   "version": 1,
   "viewport": { "x": 0, "y": 0, "zoom": 1.0 },
+  "viewSettings": {
+    "mergeConvergentEdges": false
+  },
   "tables": {
     "public.orders": { "x": 120, "y": 80 },
     "public.users":  { "x": 400, "y": 80, "hidden": true, "color": "#D0E8FF" }
@@ -354,6 +357,12 @@ The diagram stores table positions, viewport state, group state, and edge offset
 ```
 
 ### Properties
+
+**`viewSettings`** — diagram display toggles (omitted when all defaults):
+- `showOnlyPkFk` — show only PK/FK columns; omitted when `false` (default off)
+- `showGroupBoundary` — show group boundary boxes; omitted when `true` (default on)
+- `showCardinalityLabels` — show 1/N labels on edges; omitted when `true` (default on)
+- `mergeConvergentEdges` — merge FK lines sharing an endpoint into a trunk; omitted when `true` (default on)
 
 **`tables`** — keyed by qualified name `schema.table`:
 - `x`, `y` — integer pixel coordinates
