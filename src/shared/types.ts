@@ -50,6 +50,8 @@ export interface Table {
   tableChange?: 'add' | 'drop' | 'modify';
   /** For tableChange === 'modify': the table name before the migration. */
   tableFromName?: string;
+  /** Index-level migration annotations: PK indexes being added or dropped. */
+  indexChanges?: Array<{ columns: string[]; kind: 'add' | 'drop' }>;
 }
 
 export type RefEndpointRelation = '1' | '*'; // one or many

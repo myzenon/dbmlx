@@ -72,6 +72,10 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
     : table.columns;
 
   const changes = table.columnChanges ?? {};
+  const pkIndexChangeByCol = new Map<string, 'add' | 'drop'>();
+  for (const ic of table.indexChanges ?? []) {
+    for (const col of ic.columns) pkIndexChangeByCol.set(col, ic.kind);
+  }
   const changeCount = Object.keys(changes).length;
   const tableChangeClass = table.tableChange === 'add' ? ' ddd-table--add'
     : table.tableChange === 'drop' ? ' ddd-table--drop'
@@ -93,7 +97,7 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
       <TableHeader table={table} configurable showIcons={showIcons} headerStyle={headerStyle} changeCount={changeCount} tableChange={table.tableChange} tableFromName={table.tableFromName} />
       <ul class="ddd-table__cols">
         {visibleCols.map((c) => (
-          <ColumnRow key={c.name} col={c} isFk={fkColumns?.has(c.name) ?? false} change={changes[c.name]} />
+          <ColumnRow key={c.name} col={c} isFk={fkColumns?.has(c.name) ?? false} change={changes[c.name]} pkIndexChange={pkIndexChangeByCol.get(c.name)} />
         ))}
       </ul>
     </div>
@@ -220,7 +224,7 @@ function TableHeader({ table, configurable, showIcons, headerStyle, changeCount,
   );
 }
 
-function ColumnRow({ col, isFk, change }: { col: Column; isFk: boolean; change?: ColumnChange }) {
+function ColumnRow({ col, isFk, change, pkIndexChange }: { col: Column; isFk: boolean; change?: ColumnChange; pkIndexChange?: 'add' | 'drop' }) {
   const onEnter = (e: Event) => {
     if (!col.note) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -278,6 +282,9 @@ function ColumnRow({ col, isFk, change }: { col: Column; isFk: boolean; change?:
     );
   }
 
+  const pkDrop = pkIndexChange === 'drop' && !col.pk;
+  const pkAdd  = pkIndexChange === 'add'  && col.pk;
+
   return (
     <li
       class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}`}
@@ -288,7 +295,9 @@ function ColumnRow({ col, isFk, change }: { col: Column; isFk: boolean; change?:
         <span class={`ddd-table__col-name${col.pk ? ' is-pk' : ''}`}>
           {change?.kind === 'add' ? '+\u2009' : ''}{col.name}
         </span>
-        {col.pk ? <IconKey size={10} /> : null}
+        {col.pk && !pkAdd ? <IconKey size={10} /> : null}
+        {pkAdd  ? <span class="ddd-pk--add"><IconKey size={10} /></span> : null}
+        {pkDrop ? <span class="ddd-pk--drop"><IconKey size={10} /></span> : null}
         {col.note ? <IconNote size={10} /> : null}
       </span>
       <span class="ddd-table__col-right">

@@ -630,6 +630,10 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
 .ddd-col__after .ddd-table__col-name { color: var(--ddd-mig-modify); font-weight: 600; }
 .ddd-col__after .ddd-table__col-type { color: var(--ddd-mig-modify); opacity: 0.8; }
 
+/* PK index-level add/drop icons */
+.ddd-pk--add  { color: var(--ddd-mig-add);  display: inline-flex; }
+.ddd-pk--drop { color: var(--ddd-mig-drop); display: inline-flex; opacity: 0.75; }
+
 /* ===== Selection marquee (screen space overlay) ===== */
 .ddd-marquee {
   position: absolute;

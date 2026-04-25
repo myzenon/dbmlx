@@ -26,11 +26,11 @@ export function stripDbmlxExtensions(source: string): string {
 
 export function parseDbmlx(source: string): { schema: Schema; error: null } | { schema: null; error: ParseError } {
   const { stripped: noViews, views } = extractDiagramViews(source);
-  const { stripped, changes: migrationChanges, tableChanges, tableFromNames } = extractMigrationChanges(noViews);
+  const { stripped, changes: migrationChanges, tableChanges, tableFromNames, indexChanges } = extractMigrationChanges(noViews);
   try {
     const db = Parser.parse(stripped, 'dbmlv2');
     const exported = db.export() as unknown as ExportedDatabase;
-    const schema = mapExportedToSchema(exported, migrationChanges, tableChanges, tableFromNames);
+    const schema = mapExportedToSchema(exported, migrationChanges, tableChanges, tableFromNames, indexChanges);
     schema.views = views;
     return { schema, error: null };
   } catch (err) {
@@ -82,10 +82,12 @@ function extractMigrationChanges(source: string): {
   changes: Map<string, Map<string, ColumnChange>>;
   tableChanges: Map<string, 'add' | 'drop' | 'modify'>;
   tableFromNames: Map<string, string>;
+  indexChanges: Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>;
 } {
   const changes = new Map<string, Map<string, ColumnChange>>();
   const tableChanges = new Map<string, 'add' | 'drop' | 'modify'>();
   const tableFromNames = new Map<string, string>();
+  const indexChanges = new Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>();
   const lines = source.split('\n');
   const outLines: string[] = [];
 
@@ -93,6 +95,8 @@ function extractMigrationChanges(source: string): {
   let inTable = false;
   let tableBodyDepth = 0;
   let currentTableRawName = '';
+  let inIndexesBlock = false;
+  let indexesBodyDepth = 0;
 
   const TABLE_OPEN_RE = /^\s*[Tt]able\s+([\w"`.]+(?:\.[\w"`.]+)?)/;
   const COL_NAME_RE = /^\s+(?:"([^"]+)"|(\w+))\s/;
@@ -112,6 +116,7 @@ function extractMigrationChanges(source: string): {
       isTableHeader = true;
       tableBodyDepth = braceDepth + opens;
       if (!changes.has(currentTableRawName)) changes.set(currentTableRawName, new Map());
+      if (!indexChanges.has(currentTableRawName)) indexChanges.set(currentTableRawName, []);
       // Detect [add] / [drop] / [modify: name="old"] on the table header line (before `{`)
       const headerBracket = /\[([^\]]*)\]/.exec(line.replace(/\{[^}]*$/, ''));
       if (headerBracket) {
@@ -130,8 +135,41 @@ function extractMigrationChanges(source: string): {
 
     braceDepth += opens - closes;
     if (inTable && braceDepth < tableBodyDepth) inTable = false;
+    if (inIndexesBlock && braceDepth < indexesBodyDepth) inIndexesBlock = false;
 
     let processedLine = line;
+
+    // Detect "indexes {" header at table body depth
+    const isIndexesHeader = inTable && !inIndexesBlock && /^\s*indexes\s*\{/i.test(line);
+    if (isIndexesHeader) { inIndexesBlock = true; indexesBodyDepth = braceDepth; }
+
+    // Parse index lines for [add]/[drop] annotations
+    if (inTable && inIndexesBlock && !isIndexesHeader && braceDepth === indexesBodyDepth) {
+      const trimmed = line.trim();
+      if (trimmed && trimmed !== '}') {
+        const hasIndexAdd = /\[[^\]]*\badd\b[^\]]*\]/i.test(line);
+        const hasIndexDrop = /\[[^\]]*\bdrop\b[^\]]*\]/i.test(line);
+        if (hasIndexAdd || hasIndexDrop) {
+          let columns: string[] = [];
+          const compositeMatch = /^\s*\(([^)]+)\)/.exec(line);
+          if (compositeMatch) {
+            columns = compositeMatch[1]!.split(',').map((s) => s.trim().replace(/["'`]/g, '')).filter(Boolean);
+          } else {
+            const singleMatch = /^\s*(\w+)/.exec(line);
+            if (singleMatch) columns = [singleMatch[1]!];
+          }
+          const kind: 'add' | 'drop' = hasIndexDrop ? 'drop' : 'add';
+          indexChanges.get(currentTableRawName)!.push({ columns, kind });
+          if (hasIndexDrop) { outLines.push(''); continue; }
+          processedLine = line.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
+            const rest = inner.split(',').map((s) => s.trim()).filter((s) => !/^add$/i.test(s)).join(', ');
+            return rest ? `[${rest}]` : '';
+          }).trimEnd();
+          outLines.push(processedLine);
+          continue;
+        }
+      }
+    }
 
     // Strip [add] / [drop] / [modify: ...] from table header so @dbml/core doesn't choke on them
     if (isTableHeader && tableChanges.has(currentTableRawName)) {
@@ -210,7 +248,7 @@ function extractMigrationChanges(source: string): {
     outLines.push(processedLine);
   }
 
-  return { stripped: outLines.join('\n'), changes, tableChanges, tableFromNames };
+  return { stripped: outLines.join('\n'), changes, tableChanges, tableFromNames, indexChanges };
 }
 
 function toParseError(err: unknown): ParseError {
@@ -310,7 +348,7 @@ function qualify(schemaName: string | null | undefined, tableName: string): Qual
   return `${s && s.length > 0 ? s : 'public'}.${t}`;
 }
 
-function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string, Map<string, ColumnChange>>, tableAnnotations?: Map<string, 'add' | 'drop' | 'modify'>, tableFromNames?: Map<string, string>): Schema {
+function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string, Map<string, ColumnChange>>, tableAnnotations?: Map<string, 'add' | 'drop' | 'modify'>, tableFromNames?: Map<string, string>, tableIndexChanges?: Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>): Schema {
   const tables: Table[] = [];
   const refs: Ref[] = [];
   const groups: TableGroup[] = [];
@@ -358,6 +396,7 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
       });
       const tableChange = tableAnnotations?.get(cleanName);
       const tableFromName = tableFromNames?.get(cleanName);
+      const idxChanges = tableIndexChanges?.get(cleanName)?.filter((ic) => ic.columns.length > 0);
       tables.push({
         name: qn,
         schemaName,
@@ -368,6 +407,7 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
         columnChanges,
         ...(tableChange ? { tableChange } : {}),
         ...(tableFromName ? { tableFromName } : {}),
+        ...(idxChanges?.length ? { indexChanges: idxChanges } : {}),
       });
     }
 
