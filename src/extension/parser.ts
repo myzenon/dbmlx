@@ -171,6 +171,30 @@ function extractMigrationChanges(source: string): {
       }
     }
 
+    // Detect Ref lines with [add]/[drop] (top-level or inside table blocks)
+    if (/^\s*[Rr]ef\b/.test(line) && !isTableHeader && !isIndexesHeader) {
+      const hasRefDrop = /\[[^\]]*\bdrop\b[^\]]*\]/i.test(line);
+      if (hasRefDrop) { outLines.push(''); continue; }
+      const hasRefAdd = /\[[^\]]*\badd\b[^\]]*\]/i.test(line);
+      if (hasRefAdd) {
+        processedLine = line.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
+          if (!/\badd\b/i.test(inner)) return _m;
+          const rest = inner.split(',').map((s) => s.trim()).filter((s) => !/^add$/i.test(s)).join(', ');
+          return rest ? `[${rest}]` : '';
+        }).trimEnd();
+        // Inject DBMLXADD_ name prefix so mapRef can detect this ref as [add]
+        processedLine = processedLine.replace(
+          /^(\s*[Rr]ef\b)(\s+"[^"]*"|\s+[\w]+)?(\s*:)/,
+          (_m, kw: string, name: string | undefined, colon: string) => {
+            const orig = (name ?? '').trim().replace(/^"|"$/g, '').replace(/\s+/g, '_');
+            return `${kw} DBMLXADD_${orig}${colon}`;
+          },
+        );
+        outLines.push(processedLine);
+        continue;
+      }
+    }
+
     // Strip [add] / [drop] / [modify: ...] from table header so @dbml/core doesn't choke on them
     if (isTableHeader && tableChanges.has(currentTableRawName)) {
       processedLine = processedLine.replace(/\[([^\]]*)\]/, (_m, content: string) => {
@@ -446,6 +470,8 @@ function typeName(t: unknown): string {
   return 'unknown';
 }
 
+const REFADD_PREFIX = 'DBMLXADD_';
+
 function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
   if (!r.endpoints || r.endpoints.length !== 2) return null;
   const [a, b] = r.endpoints;
@@ -461,7 +487,13 @@ function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
     relation: normalizeRelation(b.relation),
   };
   const id = stableRefId(source.table, source.columns, target.table, target.columns);
-  return { id, source, target, name: r.name || null };
+  let name = r.name || null;
+  let refChange: 'add' | undefined;
+  if (name?.startsWith(REFADD_PREFIX)) {
+    refChange = 'add';
+    name = name.slice(REFADD_PREFIX.length) || null;
+  }
+  return { id, source, target, name, ...(refChange ? { refChange } : {}) };
 }
 
 function normalizeRelation(rel: unknown): RefEndpointRelation {

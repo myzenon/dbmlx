@@ -135,8 +135,9 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
         // Collect junction dot once per group (first non-duplicate edge that has a junction).
         if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) junctions.push(r.convergeJunction);
 
+        const isAddRef = ref?.refChange === 'add';
         return (
-          <g key={r.id}>
+          <g key={r.id} class={isAddRef ? 'ddd-edge-grp ddd-edge-grp--add' : 'ddd-edge-grp'}>
             <path
               d={r.d}
               class="ddd-edge"

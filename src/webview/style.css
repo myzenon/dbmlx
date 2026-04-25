@@ -360,6 +360,13 @@ body.ddd-is-dragging .ddd-table:not(:active) { pointer-events: none; }
   fill: var(--ddd-edge);
   stroke: none;
 }
+.ddd-edge-grp--add path.ddd-edge {
+  stroke: var(--ddd-mig-add);
+  color: var(--ddd-mig-add);
+}
+.ddd-edge-grp--add text.ddd-edge-label {
+  fill: var(--ddd-mig-add);
+}
 body.ddd-is-edge-dragging { cursor: ew-resize !important; }
 
 .ddd-banner {

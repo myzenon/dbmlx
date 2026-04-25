@@ -61,6 +61,7 @@ export interface Ref {
   source: { table: QualifiedName; columns: string[]; relation: RefEndpointRelation };
   target: { table: QualifiedName; columns: string[]; relation: RefEndpointRelation };
   name?: string | null;
+  refChange?: 'add' | 'drop';
 }
 
 export interface TableGroup {

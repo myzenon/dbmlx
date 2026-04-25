@@ -184,6 +184,9 @@ export function generateSvg(state: AppState): string {
   const vx = x0 - PAD, vy = y0 - PAD, vw = x1 - x0 + PAD * 2, vh = y1 - y0 + PAD * 2;
 
   const dark = theme === 'dark';
+  const migAdd    = '#4caf50';
+  const migDrop   = '#f44336';
+  const migModify = '#ff9800';
   const bg        = dark ? '#1e1e1e' : '#ffffff';
   const fg        = dark ? '#d4d4d4' : '#1e1e1e';
   const fgMuted   = dark ? '#858585' : '#6b6b6b';
@@ -244,7 +247,8 @@ export function generateSvg(state: AppState): string {
     if (r.sourceConvergeGroupId && !isSrcConvergeDup) renderedConvergeSources.add(r.sourceConvergeGroupId);
     const activeStartMarker = isSrcConvergeDup ? '' : ` marker-start="${startMarker}"`;
     const activeEndMarker   = isTgtConvergeDup ? '' : ` marker-end="${endMarker}"`;
-    L.push(`<path d="${r.d}" fill="none" stroke="${edgeLine}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}/>`);
+    const refStroke = ref?.refChange === 'add' ? migAdd : edgeLine;
+    L.push(`<path d="${r.d}" fill="none" stroke="${refStroke}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}/>`);
     if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) {
       L.push(`<circle cx="${r.convergeJunction.x}" cy="${r.convergeJunction.y}" r="4" fill="${edgeLine}"/>`);
     }
@@ -253,11 +257,6 @@ export function generateSvg(state: AppState): string {
       if (!isTgtConvergeDup) L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
     }
   }
-
-  // Migration diff colors
-  const migAdd    = '#4caf50';
-  const migDrop   = '#f44336';
-  const migModify = '#ff9800';
 
   // Tables
   for (let ti = 0; ti < schema.tables.length; ti++) {
