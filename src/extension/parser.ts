@@ -174,20 +174,21 @@ function extractMigrationChanges(source: string): {
     // Detect Ref lines with [add]/[drop] (top-level or inside table blocks)
     if (/^\s*[Rr]ef\b/.test(line) && !isTableHeader && !isIndexesHeader) {
       const hasRefDrop = /\[[^\]]*\bdrop\b[^\]]*\]/i.test(line);
-      if (hasRefDrop) { outLines.push(''); continue; }
       const hasRefAdd = /\[[^\]]*\badd\b[^\]]*\]/i.test(line);
-      if (hasRefAdd) {
+      if (hasRefDrop || hasRefAdd) {
+        const keyword = hasRefDrop ? 'drop' : 'add';
+        const PREFIX = hasRefDrop ? 'DBMLXDROP_' : 'DBMLXADD_';
         processedLine = line.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
-          if (!/\badd\b/i.test(inner)) return _m;
-          const rest = inner.split(',').map((s) => s.trim()).filter((s) => !/^add$/i.test(s)).join(', ');
+          if (!new RegExp(`\\b${keyword}\\b`, 'i').test(inner)) return _m;
+          const rest = inner.split(',').map((s) => s.trim()).filter((s) => !new RegExp(`^${keyword}$`, 'i').test(s)).join(', ');
           return rest ? `[${rest}]` : '';
         }).trimEnd();
-        // Inject DBMLXADD_ name prefix so mapRef can detect this ref as [add]
+        // Inject name prefix so mapRef can detect the annotation
         processedLine = processedLine.replace(
           /^(\s*[Rr]ef\b)(\s+"[^"]*"|\s+[\w]+)?(\s*:)/,
           (_m, kw: string, name: string | undefined, colon: string) => {
             const orig = (name ?? '').trim().replace(/^"|"$/g, '').replace(/\s+/g, '_');
-            return `${kw} DBMLXADD_${orig}${colon}`;
+            return `${kw} ${PREFIX}${orig}${colon}`;
           },
         );
         outLines.push(processedLine);
@@ -470,8 +471,6 @@ function typeName(t: unknown): string {
   return 'unknown';
 }
 
-const REFADD_PREFIX = 'DBMLXADD_';
-
 function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
   if (!r.endpoints || r.endpoints.length !== 2) return null;
   const [a, b] = r.endpoints;
@@ -488,11 +487,9 @@ function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
   };
   const id = stableRefId(source.table, source.columns, target.table, target.columns);
   let name = r.name || null;
-  let refChange: 'add' | undefined;
-  if (name?.startsWith(REFADD_PREFIX)) {
-    refChange = 'add';
-    name = name.slice(REFADD_PREFIX.length) || null;
-  }
+  let refChange: 'add' | 'drop' | undefined;
+  if (name?.startsWith('DBMLXADD_')) { refChange = 'add'; name = name.slice(9) || null; }
+  else if (name?.startsWith('DBMLXDROP_')) { refChange = 'drop'; name = name.slice(10) || null; }
   return { id, source, target, name, ...(refChange ? { refChange } : {}) };
 }
 

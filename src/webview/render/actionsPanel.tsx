@@ -10,6 +10,7 @@ export function ActionsPanel() {
   const showGroupBoundary = useAppStore((s) => s.showGroupBoundary);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
   const mergeConvergentEdges = useAppStore((s) => s.mergeConvergentEdges);
+  const showDropRefs = useAppStore((s) => s.showDropRefs);
 
   return (
     <div class={`ddd-actions-panel ${open ? 'is-open' : 'is-closed'}`}>
@@ -53,6 +54,14 @@ export function ActionsPanel() {
           >
             <IconFilter size={12} />
             <span>Merge Lines</span>
+          </button>
+          <button
+            class={`ddd-actions-btn ${showDropRefs ? 'is-active' : ''}`}
+            onClick={() => store.getState().setShowDropRefs(!showDropRefs)}
+            title="Show [drop]-annotated refs as red dashed lines (hidden by default)"
+          >
+            <IconFilter size={12} />
+            <span>Drop Refs</span>
           </button>
           <button
             class="ddd-actions-btn"

@@ -71,7 +71,7 @@ function esc(s: string): string {
 
 export function generateSvg(state: AppState): string {
   const { schema, positions, hiddenTables, tableColors, groups: grpState, theme, edgeOffsets,
-    showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges } = state;
+    showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges, showDropRefs } = state;
 
   // Build fkColumnsByTable from refs (mirrors app.tsx useMemo)
   const fkColsByTable = new Map<QualifiedName, Set<string>>();
@@ -135,6 +135,7 @@ export function generateSvg(state: AppState): string {
   const effRefs: Ref[] = [];
   const seen = new Set<string>();
   for (const r of schema.refs) {
+    if (r.refChange === 'drop' && !showDropRefs) continue;
     const sm = mapEp(r.source.table); const tm = mapEp(r.target.table);
     if (!sm || !tm || sm === tm) continue;
     const key = `${sm}::${r.source.columns.join(',')}|${tm}::${r.target.columns.join(',')}`;
@@ -247,8 +248,10 @@ export function generateSvg(state: AppState): string {
     if (r.sourceConvergeGroupId && !isSrcConvergeDup) renderedConvergeSources.add(r.sourceConvergeGroupId);
     const activeStartMarker = isSrcConvergeDup ? '' : ` marker-start="${startMarker}"`;
     const activeEndMarker   = isTgtConvergeDup ? '' : ` marker-end="${endMarker}"`;
-    const refStroke = ref?.refChange === 'add' ? migAdd : edgeLine;
-    L.push(`<path d="${r.d}" fill="none" stroke="${refStroke}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}/>`);
+    const isDropRef = ref?.refChange === 'drop';
+    const refStroke = ref?.refChange === 'add' ? migAdd : isDropRef ? migDrop : edgeLine;
+    const dropAttrs = isDropRef ? ' stroke-dasharray="5 4" opacity="0.55"' : '';
+    L.push(`<path d="${r.d}" fill="none" stroke="${refStroke}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}${dropAttrs}/>`);
     if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) {
       L.push(`<circle cx="${r.convergeJunction.x}" cy="${r.convergeJunction.y}" r="4" fill="${edgeLine}"/>`);
     }

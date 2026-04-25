@@ -367,6 +367,16 @@ body.ddd-is-dragging .ddd-table:not(:active) { pointer-events: none; }
 .ddd-edge-grp--add text.ddd-edge-label {
   fill: var(--ddd-mig-add);
 }
+.ddd-edge-grp--drop path.ddd-edge {
+  stroke: var(--ddd-mig-drop);
+  color: var(--ddd-mig-drop);
+  stroke-dasharray: 5 4;
+  opacity: 0.55;
+}
+.ddd-edge-grp--drop text.ddd-edge-label {
+  fill: var(--ddd-mig-drop);
+  opacity: 0.55;
+}
 body.ddd-is-edge-dragging { cursor: ew-resize !important; }
 
 .ddd-banner {

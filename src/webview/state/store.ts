@@ -34,6 +34,8 @@ export interface AppState {
   showCardinalityLabels: boolean;
   /** Ephemeral: merge convergent FK edges into a shared trunk. Not persisted. */
   mergeConvergentEdges: boolean;
+  /** Ephemeral: show [drop]-annotated ref lines as red dashed edges. Default false. */
+  showDropRefs: boolean;
   /** Active DiagramView name, or null = show all tables. Ephemeral, not persisted. */
   activeView: string | null;
 }
@@ -57,6 +59,7 @@ export interface AppActions {
   setShowGroupBoundary(v: boolean): void;
   setShowCardinalityLabels(v: boolean): void;
   setMergeConvergentEdges(v: boolean): void;
+  setShowDropRefs(v: boolean): void;
   resetPositions(): void;
   setActiveView(name: string | null): void;
 }
@@ -79,6 +82,7 @@ const initial: AppState = {
   showGroupBoundary: true,
   showCardinalityLabels: true,
   mergeConvergentEdges: true,
+  showDropRefs: false,
   activeView: null,
 };
 
@@ -109,6 +113,7 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
       showGroupBoundary: vs.showGroupBoundary ?? true,
       showCardinalityLabels: vs.showCardinalityLabels ?? true,
       mergeConvergentEdges: vs.mergeConvergentEdges ?? true,
+      showDropRefs: vs.showDropRefs ?? false,
     });
   },
   setTablePos(name, x, y) {
@@ -189,6 +194,9 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
   },
   setMergeConvergentEdges(v: boolean) {
     set({ mergeConvergentEdges: v });
+  },
+  setShowDropRefs(v: boolean) {
+    set({ showDropRefs: v });
   },
   resetPositions() {
     set({ positions: new Map() });

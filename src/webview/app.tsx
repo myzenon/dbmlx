@@ -65,6 +65,7 @@ export function App(_props: AppProps) {
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
   const mergeConvergentEdges = useAppStore((s) => s.mergeConvergentEdges);
+  const showDropRefs = useAppStore((s) => s.showDropRefs);
 
   const tablesByName = useMemo(() => {
     const m = new Map<QualifiedName, Table>();
@@ -81,6 +82,7 @@ export function App(_props: AppProps) {
       s.add(col);
     };
     for (const r of schema.refs) {
+      if (r.refChange === 'drop') continue; // dropped refs don't count as active FKs
       for (const c of r.source.columns) add(r.source.table, c);
       for (const c of r.target.columns) add(r.target.table, c);
     }
@@ -98,10 +100,11 @@ export function App(_props: AppProps) {
           showGroupBoundary: showGroupBoundary === false ? false : undefined,
           showCardinalityLabels: showCardinalityLabels === false ? false : undefined,
           mergeConvergentEdges: mergeConvergentEdges === false ? false : undefined,
+          showDropRefs: showDropRefs || undefined,
         },
       },
     });
-  }, [ready, showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges]);
+  }, [ready, showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges, showDropRefs]);
 
   useEffect(() => {
     if (!ready) return;
@@ -223,6 +226,7 @@ export function App(_props: AppProps) {
     const effectiveRefs: Ref[] = [];
     const seen = new Set<string>();
     for (const r of schema.refs) {
+      if (r.refChange === 'drop' && !showDropRefs) continue;
       const srcM = mapEndpoint(r.source.table);
       const tgtM = mapEndpoint(r.target.table);
       if (srcM == null || tgtM == null) continue;
@@ -239,7 +243,7 @@ export function App(_props: AppProps) {
     }
 
     return { hiddenTables, collapsedTables, collapsedNodes, containers, effectiveRefs };
-  }, [schema, positions, groupState, individuallyHidden, showOnlyPkFk, fkColumnsByTable]);
+  }, [schema, positions, groupState, individuallyHidden, showOnlyPkFk, fkColumnsByTable, showDropRefs]);
 
   const spatialIndex = useMemo(() => {
     const idx = new SpatialIndex();

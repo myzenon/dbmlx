@@ -125,6 +125,7 @@ export interface ViewSettings {
   showGroupBoundary?: boolean;
   showCardinalityLabels?: boolean;
   mergeConvergentEdges?: boolean;
+  showDropRefs?: boolean;
 }
 
 export interface Layout {

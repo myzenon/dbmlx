@@ -136,8 +136,10 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
         if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) junctions.push(r.convergeJunction);
 
         const isAddRef = ref?.refChange === 'add';
+        const isDropRef = ref?.refChange === 'drop';
+        const grpClass = isAddRef ? 'ddd-edge-grp ddd-edge-grp--add' : isDropRef ? 'ddd-edge-grp ddd-edge-grp--drop' : 'ddd-edge-grp';
         return (
-          <g key={r.id} class={isAddRef ? 'ddd-edge-grp ddd-edge-grp--add' : 'ddd-edge-grp'}>
+          <g key={r.id} class={grpClass}>
             <path
               d={r.d}
               class="ddd-edge"
@@ -146,7 +148,7 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
             />
             {showCardinalityLabels && !isSrcConvergeDup ? <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text> : null}
             {showCardinalityLabels && !isTgtConvergeDup ? <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text> : null}
-            {r.midSeg ? (
+            {r.midSeg && !isDropRef ? (
               <line
                 class="ddd-edge-handle"
                 x1={r.midSeg.x1}
