@@ -4,7 +4,7 @@ import type { QualifiedName, Ref, Schema } from '../../shared/types';
 import { colRowY, estimateSize, tableActualHeight, TABLE_ROW_H } from '../layout/autoLayout';
 import { routeRefs } from './edgeRouter';
 import type { Bbox } from './spatialIndex';
-import { useAppStore } from '../state/store';
+import { useAppStore, store } from '../state/store';
 import { startEdgeDrag } from '../drag/dragController';
 
 interface GroupSize {
@@ -32,6 +32,7 @@ const GROUP_PREFIX = '__group__:';
 function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable, mergeConvergentEdges, colorizeAddRefs }: EdgeLayerProps) {
   const edgeOffsets = useAppStore((s) => s.edgeOffsets);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
+  const hoveredColKey = useAppStore((s) => s.hoveredColKey);
 
   const groupByName = useMemo(() => {
     const m = new Map<string, GroupSize>();
@@ -81,6 +82,20 @@ function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, 
   const refById = new Map<string, Ref>();
   for (const r of refs) refById.set(r.id, r);
 
+  const hlEdgeIds = useMemo(() => {
+    if (!hoveredColKey) return null;
+    const sep = hoveredColKey.indexOf('\x1f');
+    const table = hoveredColKey.slice(0, sep);
+    const col = hoveredColKey.slice(sep + 1);
+    const ids = new Set<string>();
+    for (const r of refs) {
+      const srcMatch = r.source.table === table && r.source.columns.includes(col);
+      const tgtMatch = r.target.table === table && r.target.columns.includes(col);
+      if (srcMatch || tgtMatch) ids.add(r.id);
+    }
+    return ids;
+  }, [hoveredColKey, refs]);
+
   // Track occupied label slots (bucketed to 10px grid) so colliding labels go below instead of above.
   const usedLabelSlots = new Set<string>();
   const labelY = (x: number, y: number): number => {
@@ -93,7 +108,7 @@ function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, 
   // For converge groups, only the first edge renders the hub-side marker/label.
   const renderedConvergeGroups = new Set<string>();
   // Collect one junction point per converge group for the dot overlay.
-  const junctions: Array<{ x: number; y: number }> = [];
+  const junctions: Array<{ x: number; y: number; hlSuffix: string }> = [];
 
   return (
     <svg
@@ -136,8 +151,6 @@ function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, 
         // Suppress hub-side marker/label for non-first edges in a converge group.
         const isConvergeDup = r.convergeGroupId !== undefined && renderedConvergeGroups.has(r.convergeGroupId);
         if (r.convergeGroupId && !isConvergeDup) renderedConvergeGroups.add(r.convergeGroupId);
-        // Collect junction dot once per group.
-        if (r.convergeJunction && !isConvergeDup) junctions.push(r.convergeJunction);
 
         // Hub is at source → suppress startMarker for dup; hub at target → suppress endMarker.
         const suppressStart = isConvergeDup && r.convergeHubIsSource === true;
@@ -145,9 +158,27 @@ function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, 
 
         const isAddRef = ref?.refChange === 'add';
         const isDropRef = ref?.refChange === 'drop';
-        const grpClass = (isAddRef && colorizeAddRefs) ? 'ddd-edge-grp ddd-edge-grp--add' : isDropRef ? 'ddd-edge-grp ddd-edge-grp--drop' : 'ddd-edge-grp';
+        const hlSuffix = hlEdgeIds
+          ? hlEdgeIds.has(r.id) ? ' ddd-edge-grp--hl' : ' ddd-edge-grp--dim'
+          : '';
+
+        // Collect junction dot once per group (after hlSuffix is computed).
+        if (r.convergeJunction && !isConvergeDup) junctions.push({ ...r.convergeJunction, hlSuffix });
+        const grpClass = ((isAddRef && colorizeAddRefs) ? 'ddd-edge-grp ddd-edge-grp--add' : isDropRef ? 'ddd-edge-grp ddd-edge-grp--drop' : 'ddd-edge-grp') + hlSuffix;
+        const effectiveRef = ref ?? null;
         return (
           <g key={r.id} class={grpClass}>
+            {/* Wide invisible hit area for hover */}
+            <path
+              d={r.d}
+              fill="none"
+              stroke="transparent"
+              stroke-width="12"
+              style="pointer-events: stroke; cursor: default;"
+              onMouseEnter={(e) => store.getState().setHoveredEdgeRef(effectiveRef, { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY })}
+              onMouseMove={(e) => store.getState().setHoveredEdgeRef(effectiveRef, { x: (e as MouseEvent).clientX, y: (e as MouseEvent).clientY })}
+              onMouseLeave={() => store.getState().setHoveredEdgeRef(null)}
+            />
             <path
               d={r.d}
               class="ddd-edge"
@@ -170,7 +201,7 @@ function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, 
         );
       })}
       {junctions.map((j, idx) => (
-        <circle key={`jct-${idx}`} class="ddd-edge-junction" cx={j.x} cy={j.y} r={4} />
+        <circle key={`jct-${idx}`} class={`ddd-edge-junction${j.hlSuffix}`} cx={j.x} cy={j.y} r={4} />
       ))}
     </svg>
   );

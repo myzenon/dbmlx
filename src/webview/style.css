@@ -379,6 +379,19 @@ body.ddd-is-dragging .ddd-table:not(:active) { pointer-events: none; }
 }
 body.ddd-is-edge-dragging { cursor: ew-resize !important; }
 
+/* Column-hover highlight: dim unrelated edges/columns, brighten related ones */
+.ddd-edge-grp--dim { opacity: 0.12; }
+circle.ddd-edge-junction.ddd-edge-grp--dim { opacity: 0.12; }
+circle.ddd-edge-junction.ddd-edge-grp--hl { fill: var(--vscode-charts-yellow, #e5c07b); }
+.ddd-edge-grp--hl path.ddd-edge {
+  stroke: var(--vscode-charts-yellow, #e5c07b);
+  color: var(--vscode-charts-yellow, #e5c07b);
+  stroke-width: 2.2;
+}
+.ddd-edge-grp--hl text.ddd-edge-label { fill: var(--vscode-charts-yellow, #e5c07b); }
+.ddd-edge-grp--hl circle.ddd-edge-junction { fill: var(--vscode-charts-yellow, #e5c07b); }
+.ddd-table__col.is-col-hl { background: var(--vscode-list-activeSelectionBackground, rgba(255,200,60,0.15)) !important; }
+
 .ddd-banner {
   position: absolute;
   top: 8px;
@@ -891,6 +904,7 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
   padding: 2px 8px 2px 4px;
   font-size: 11px;
   color: var(--ddd-fg-muted);
+  border-left: 3px solid transparent;
 }
 .ddd-table-row:hover { background: var(--vscode-list-hoverBackground, rgba(255,255,255,0.04)); }
 .ddd-table-row__name {
@@ -1179,3 +1193,27 @@ body.ddd-is-edge-dragging { cursor: ew-resize !important; }
   left: 16px;
   background: #fff;
 }
+
+/* ── Edge hover tooltip ───────────────────────────────────────────── */
+.ddd-edge-tooltip {
+  position: fixed;
+  background: var(--vscode-editorHoverWidget-background, #252526);
+  border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+  border-radius: 4px;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-family: var(--vscode-editor-font-family, ui-monospace, monospace, sans-serif);
+  color: var(--vscode-editorHoverWidget-foreground, #d4d4d4);
+  pointer-events: none;
+  z-index: 900;
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.ddd-edge-tooltip__card {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #858585);
+}
+

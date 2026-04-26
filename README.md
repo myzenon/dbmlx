@@ -178,6 +178,7 @@ Full language server features for `.dbmlx` files:
 | **Go-to-definition** | Jump to table or **column** definition; `!include` → open included file |
 | **Document symbols** | Outline panel lists all tables and columns |
 | **Completions** | Table names, column names, SQL types, settings, ref operators, diff annotations, `!include` file paths; `Ref:` completions chain automatically: schema → table → column → operator → right-side schema/table/column without `Ctrl+Space`; composite FK tuple syntax supported |
+| **CodeLens** | "Focus in diagram" link above each `Table` definition — click to pan and zoom the open diagram to that table, un-hiding its group if needed |
 | **Formatting** | Auto-format on save — consistent indentation, idempotent |
 | **Diagnostics** | Parse errors shown as squiggles with line/column |
 
@@ -191,6 +192,18 @@ The actions panel (bottom of the diagram) provides view toggles:
 | **Table Groups** | On | Show group boundary boxes; auto-arrange respects group clusters |
 | **Cardinality** | On | Show 1/N labels on relation lines |
 | **Merge Lines** | On | Merge FK lines that share the same endpoint column into a single trunk with a junction dot |
+
+### Column hover highlight
+
+Hover any column in the diagram to instantly highlight all FK relationships involving that column:
+
+- The hovered column and all connected columns across tables get an amber background.
+- Related edges turn yellow and thicken; unrelated edges dim to near-invisible.
+- Junction dots on merged trunk lines follow the same highlight/dim state.
+
+### Edge hover tooltip
+
+Hover any relation line to see a tooltip showing `source.col → target.col` and the cardinality (`N : 1`, `1 : 1`, etc.).
 
 ### Auto-arrange
 
@@ -226,8 +239,10 @@ Run the relevant command from the command palette or use the export buttons in t
 | DBMLX: Zoom In | `Ctrl+=` / `Cmd+=` |
 | DBMLX: Zoom Out | `Ctrl+-` / `Cmd+-` |
 | DBMLX: Export Diagram as SVG | — |
+| DBMLX: Export Diagram as PNG | — |
 | DBMLX: Export Schema to SQL | — |
 | DBMLX: Import Schema from SQL | — |
+| DBMLX: Focus Table in Diagram | — (use CodeLens link above `Table` definition) |
 
 ---
 

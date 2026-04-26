@@ -15,6 +15,7 @@ import { lodForZoom } from './render/lod';
 import { GroupPanel, colorForGroup } from './groups/groupPanel';
 import { ViewPanel } from './render/viewPanel';
 import { Tooltip } from './render/tooltip';
+import { EdgeTooltip } from './render/edgeTooltip';
 import type { QualifiedName, Ref, Table, WebviewToHost } from '../shared/types';
 
 interface AppProps {
@@ -67,6 +68,27 @@ export function App(_props: AppProps) {
   const mergeConvergentEdges = useAppStore((s) => s.mergeConvergentEdges);
   const showDropRefs = useAppStore((s) => s.showDropRefs);
   const colorizeAddRefs = useAppStore((s) => s.colorizeAddRefs);
+  const hoveredColKey = useAppStore((s) => s.hoveredColKey);
+
+  // Map of tableName → Set<colName> for columns to highlight, derived from hovered column key.
+  const colHighlights = useMemo(() => {
+    if (!hoveredColKey) return null;
+    const sep = hoveredColKey.indexOf('\x1f');
+    const hovTable = hoveredColKey.slice(0, sep);
+    const hovCol = hoveredColKey.slice(sep + 1);
+    const m = new Map<QualifiedName, Set<string>>();
+    const add = (table: QualifiedName, col: string) => {
+      let s = m.get(table); if (!s) { s = new Set(); m.set(table, s); } s.add(col);
+    };
+    add(hovTable, hovCol);
+    for (const r of schema.refs) {
+      const srcMatch = r.source.table === hovTable && r.source.columns.includes(hovCol);
+      const tgtMatch = r.target.table === hovTable && r.target.columns.includes(hovCol);
+      if (srcMatch) for (const c of r.target.columns) add(r.target.table, c);
+      if (tgtMatch) for (const c of r.source.columns) add(r.source.table, c);
+    }
+    return m;
+  }, [hoveredColKey, schema.refs]);
 
   const tablesByName = useMemo(() => {
     const m = new Map<QualifiedName, Table>();
@@ -557,6 +579,7 @@ export function App(_props: AppProps) {
                   selected={selection.has(t.name)}
                   color={tColor}
                   fkColumns={fkColumnsByTable.get(t.name)}
+                  highlightedCols={colHighlights?.get(t.name)}
                 />
               );
             })}
@@ -610,6 +633,7 @@ export function App(_props: AppProps) {
         </div>
       ) : null}
       <Tooltip />
+      <EdgeTooltip />
     </>
   );
 }

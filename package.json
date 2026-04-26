@@ -2,7 +2,7 @@
   "name": "dbmlx",
   "displayName": "DBMLX: Database Visual and Design",
   "description": "Interactive .dbmlx diagram renderer for VSCode. Git-friendly layout persistence, DDD-aware TableGroup contexts, LSP intelligence, SVG/PNG export, and viewport culling for 5000+ tables.",
-  "version": "0.1.18",
+  "version": "0.2.0",
   "publisher": "si-zenon",
   "icon": "docs/icon.png",
   "engines": {
@@ -76,6 +76,11 @@
         "category": "DBMLX"
       },
       {
+        "command": "dbmlx.exportPng",
+        "title": "Export Diagram as PNG",
+        "category": "DBMLX"
+      },
+      {
         "command": "dbmlx.exportToSql",
         "title": "Export Schema to SQL",
         "category": "DBMLX"
@@ -83,6 +88,11 @@
       {
         "command": "dbmlx.importFromSql",
         "title": "Import Schema from SQL",
+        "category": "DBMLX"
+      },
+      {
+        "command": "dbmlx.focusTableInDiagram",
+        "title": "Focus Table in Diagram",
         "category": "DBMLX"
       }
     ],

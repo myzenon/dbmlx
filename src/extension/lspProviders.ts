@@ -387,6 +387,8 @@ const INDEX_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Completi
   { label: 'type: spgist', doc: 'SP-GiST index. Non-balanced structures (IP ranges etc.).',   kind: vscode.CompletionItemKind.EnumMember },
   { label: 'type: brin',   doc: 'BRIN index. Very large tables with natural physical ordering.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'note: ', doc: 'Index note/comment.', kind: vscode.CompletionItemKind.Property },
+  { label: 'add',  doc: 'Migration diff — this index is being added in this migration.',   kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'drop', doc: 'Migration diff — this index is being dropped in this migration.', kind: vscode.CompletionItemKind.EnumMember },
 ];
 
 const TOPLEVEL_SNIPPETS: Array<{ label: string; snippet: string; doc: string; command?: string }> = [
@@ -415,6 +417,11 @@ const MODIFY_KEYS: Array<{ label: string; doc: string; snippet: string }> = [
   { label: 'increment=', doc: 'Auto-increment status before migration', snippet: 'increment=${1|true,false|}' },
 ];
 
+const PROJECT_PROPS: Array<{ label: string; doc: string; snippet?: string }> = [
+  { label: 'database_type: ', doc: "Database dialect, e.g. `'PostgreSQL'`, `'MySQL'`, `'MSSQL'`.", snippet: "database_type: '${1:PostgreSQL}'" },
+  { label: 'Note: ', doc: 'Project description.', snippet: "Note: '${1:description}'" },
+];
+
 const REF_OPERATORS: Array<{ label: string; doc: string }> = [
   { label: '>', doc: 'Many-to-one — current → referenced' },
   { label: '<', doc: 'One-to-many — current ← referenced' },
@@ -424,7 +431,7 @@ const REF_OPERATORS: Array<{ label: string; doc: string }> = [
 
 // ── Block context helper (shared by hover + completion) ────────────────────
 
-function getContext(doc: vscode.TextDocument, pos: vscode.Position): BlockContext {
+export function getContext(doc: vscode.TextDocument, pos: vscode.Position): BlockContext {
   let depth = 0;
   let firstKind: BlockKind = 'none';
   let firstFound = false;
@@ -483,6 +490,35 @@ function isDiagramViewSection(k: BlockKind): k is 'diagramview-tables' | 'diagra
   return k === 'diagramview-tables' || k === 'diagramview-tablegroups' || k === 'diagramview-schemas';
 }
 
+function getUsedDiagramViewSections(doc: vscode.TextDocument, pos: vscode.Position): Set<string> {
+  const used = new Set<string>();
+  let depth = 0;
+  let blockStartLine = -1;
+  for (let i = pos.line; i >= 0; i--) {
+    const raw = i === pos.line ? doc.lineAt(i).text.substring(0, pos.character) : doc.lineAt(i).text;
+    const text = raw.replace(/"[^"]*"|'[^']*'|\/\/.*$/g, '');
+    for (let j = text.length - 1; j >= 0; j--) {
+      if (text[j] === '}') { depth++; }
+      else if (text[j] === '{') {
+        if (depth > 0) { depth--; }
+        else {
+          if (/^\s*diagramview\b/i.test(doc.lineAt(i).text)) blockStartLine = i;
+          break;
+        }
+      }
+    }
+    if (blockStartLine >= 0) break;
+  }
+  if (blockStartLine < 0) return used;
+  for (let i = blockStartLine + 1; i < pos.line; i++) {
+    const t = doc.lineAt(i).text.trim().toLowerCase();
+    if (/^tables\s*\{/.test(t)) used.add('Tables');
+    if (/^tablegroups\s*\{/.test(t)) used.add('TableGroups');
+    if (/^schemas\s*\{/.test(t)) used.add('Schemas');
+  }
+  return used;
+}
+
 function extractTableName(lineText: string): string | undefined {
   const m = /^table\s+([\w."]+)/i.exec(lineText.trim());
   return m ? m[1]!.replace(/"/g, '') : undefined;
@@ -525,6 +561,13 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
     // Annotations come *after* the name and are handled by the `[…]` path below.
     const tableHeaderName = /^\s*[Tt]able\s+(?:[^[{]*?)$/.test(linePrefix);
     if (tableHeaderName) return [];
+
+    // Same for DiagramView header name position (`DiagramView name` before `{`).
+    if (/^\s*[Dd]iagram[Vv]iew\s+[^{]*$/.test(linePrefix)) return [];
+    // Same for Enum, TableGroup, Project — naming a new block, not referencing one.
+    if (/^\s*[Ee]num\s+[^{]*$/.test(linePrefix)) return [];
+    if (/^\s*[Tt]able[Gg]roup\s+[^{]*$/.test(linePrefix)) return [];
+    if (/^\s*[Pp]roject\s+[^{]*$/.test(linePrefix)) return [];
 
     // A1/A4: when the cursor sits inside an unclosed `"…` token (whether VS Code
     // auto-closed the quote or not), replacement must cover the full quote token
@@ -614,15 +657,28 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
         for (const m of tupleSoFar.matchAll(/(?:"([^"]+)"|(\w+))/g)) {
           used.add(m[1] ?? m[2]!);
         }
-        return table.columns
+        const trimmedTuple = tupleSoFar.trim();
+        const tupleHasContent = trimmedTuple.length > 0;
+        const tupleEndsWithComma = /,\s*$/.test(trimmedTuple);
+        // C3: when tuple has a complete token and no trailing comma, offer `)` to close
+        const closeItem = (tupleHasContent && !tupleEndsWithComma)
+          ? (() => {
+              const it = new vscode.CompletionItem(')', vscode.CompletionItemKind.Operator);
+              it.documentation = 'Close the composite FK column tuple.';
+              it.sortText = '0_close';
+              return it;
+            })()
+          : null;
+        const colItems = table.columns
           .filter((c) => !used.has(c.name))
           .map((col, i) => {
             const item = new vscode.CompletionItem(`"${col.name}"`, vscode.CompletionItemKind.Field);
             item.filterText = col.name;
             item.detail = col.type;
-            item.sortText = (col.pk ? '0_' : '1_') + String(i).padStart(4, '0');
+            item.sortText = (col.pk ? '1_' : '2_') + String(i).padStart(4, '0');
             return item;
           });
+        return closeItem ? [closeItem, ...colItems] : colItems;
       }
     }
 
@@ -713,11 +769,18 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
 
     // 4. Inside Table block at type position: `  colName <cursor>`
     if (block === 'table' && /^\s+(?:"[^"]+"|[\w]+)\s+\w*$/.test(linePrefix)) {
-      return SQL_TYPES.map((t, i) => {
+      const sqlItems = SQL_TYPES.map((t, i) => {
         const item = new vscode.CompletionItem(t, vscode.CompletionItemKind.TypeParameter);
-        item.sortText = String(i).padStart(4, '0');
+        item.sortText = `1_${String(i).padStart(4, '0')}`;
         return item;
       });
+      const enumItems = this.index.getEnumNames(uri).map((name) => {
+        const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Enum);
+        item.documentation = 'Enum type defined in this schema.';
+        item.sortText = `0_${name}`;
+        return item;
+      });
+      return [...enumItems, ...sqlItems];
     }
 
     // 5. Inside Table block at start of line → also offer `indexes` and `Note`
@@ -737,18 +800,37 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       return this.refCompletions(linePrefix, uri, replaceRange, replaceRangeDot);
     }
 
+    // 6b. Inside Enum block → no completions (user is defining enum values)
+    if (block === 'enum') return [];
+
+    // 6c. Inside Project block → known project-level properties
+    if (block === 'project' && /^\s*\w*$/.test(linePrefix)) {
+      return PROJECT_PROPS.map(({ label, doc: d, snippet }) => {
+        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Property);
+        item.documentation = d;
+        if (snippet) item.insertText = new vscode.SnippetString(snippet);
+        return item;
+      });
+    }
+    if (block === 'project') return [];
+
     // 7. Inside TableGroup → table names
     if (block === 'tablegroup') {
       return this.tableNameItems(uri);
     }
 
-    // 7b. Inside DiagramView block → sub-section snippets
-    if (block === 'diagramview' && /^\s*\w*$/.test(linePrefix)) {
-      return [
-        this.makeSnippetItem('Tables', 'Tables {\n\t$0\n}', 'Filter by table names. Use * for all.'),
-        this.makeSnippetItem('TableGroups', 'TableGroups {\n\t$0\n}', 'Filter by table group names. Use * for all.'),
-        this.makeSnippetItem('Schemas', 'Schemas {\n\t$0\n}', 'Filter by schema names. Use * for all.'),
-      ];
+    // 7b. Inside DiagramView block → sub-section snippets, deduped against already-written ones
+    if (block === 'diagramview') {
+      if (/^\s*\w*$/.test(linePrefix)) {
+        const used = getUsedDiagramViewSections(doc, pos);
+        const all = [
+          this.makeSnippetItem('Tables', 'Tables {\n\t$0\n}', 'Filter by table names. Use * for all.'),
+          this.makeSnippetItem('TableGroups', 'TableGroups {\n\t$0\n}', 'Filter by table group names. Use * for all.'),
+          this.makeSnippetItem('Schemas', 'Schemas {\n\t$0\n}', 'Filter by schema names. Use * for all.'),
+        ];
+        return all.filter((item) => !used.has(item.label as string));
+      }
+      return [];
     }
 
     // 7c. Inside DiagramView Tables { } → table names + wildcard
@@ -780,19 +862,16 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       })];
     }
 
-    // 8. Top-level (outside any block): keyword snippets + table names
+    // 8. Top-level (outside any block): keyword snippets only
     if (block === 'none' && /^\s*\w*$/.test(linePrefix)) {
-      return [
-        ...TOPLEVEL_SNIPPETS.map(({ label, snippet, doc: d, command }) => {
-          const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Keyword);
-          item.insertText = new vscode.SnippetString(snippet);
-          item.documentation = d;
-          item.sortText = `0_${label}`;
-          if (command) item.command = { command, title: 'Suggest' };
-          return item;
-        }),
-        ...this.tableNameItems(uri),
-      ];
+      return TOPLEVEL_SNIPPETS.map(({ label, snippet, doc: d, command }) => {
+        const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Keyword);
+        item.insertText = new vscode.SnippetString(snippet);
+        item.documentation = d;
+        item.sortText = `0_${label}`;
+        if (command) item.command = { command, title: 'Suggest' };
+        return item;
+      });
     }
 
     // Typing `Ref [name]` before the colon — suppress completions
@@ -800,7 +879,7 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       return [];
     }
 
-    return this.tableNameItems(uri);
+    return [];
   }
 
   private async includePathItems(doc: vscode.TextDocument): Promise<vscode.CompletionItem[]> {
@@ -829,8 +908,8 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       ];
     }
     if (step.kind === 'operator') return this.operatorItems();
-    // Fallback for partial identifiers that didn't match a step
-    return this.tableColumnItems(uri, replaceRange);
+    // Fallback: partial identifier — show schemas + unqualified tables (same as left-empty)
+    return [...this.schemaItems(uri, replaceRangeDot), ...this.unqualifiedTableItems(uri, replaceRange)];
   }
 
   /** Unqualified `"tableName"` items for the left/right side of a Ref expression. */
@@ -846,6 +925,7 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       // Sort after schemas so schemas appear first
       item.sortText = `1_${tableName}`;
       item.insertText = `"${tableName}".`;
+      item.commitCharacters = ['.'];
       item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest columns' };
       if (replaceRange) item.range = replaceRange;
       items.push(item);
@@ -865,6 +945,7 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
       if (schema === 'public') item.preselect = true;
       // Insert with trailing `.` so dotMatch fires for table completions
       item.insertText = `"${schema}".`;
+      item.commitCharacters = ['.'];
       item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest tables' };
       if (replaceRange) item.range = replaceRange;
       return item;
@@ -911,7 +992,10 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
     return this.index.getVisibleTableNames(uri).map((name) => {
       const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Class);
       const table = this.index.getTable(name);
-      if (table) item.detail = `${table.columns.length} columns`;
+      if (table) {
+        item.detail = `${table.columns.length} columns`;
+        item.documentation = `Table \`${name}\` — ${table.columns.length} column${table.columns.length === 1 ? '' : 's'}.`;
+      }
       item.sortText = name;
       return item;
     });
@@ -932,6 +1016,28 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
     const item = new vscode.CompletionItem(label, kind);
     item.documentation = doc;
     return item;
+  }
+}
+
+// ── CodeLens ─────────────────────────────────────────────────────────────────
+
+const TABLE_HEADER_RE = /^\s*[Tt]able\s+([\w."]+(?:\.[\w."]+)?)/;
+
+class DbmlxCodeLensProvider implements vscode.CodeLensProvider {
+  provideCodeLenses(doc: vscode.TextDocument): vscode.CodeLens[] {
+    const lenses: vscode.CodeLens[] = [];
+    for (let i = 0; i < doc.lineCount; i++) {
+      const m = TABLE_HEADER_RE.exec(doc.lineAt(i).text);
+      if (!m) continue;
+      const rawName = m[1]!;
+      const range = new vscode.Range(i, 0, i, 0);
+      lenses.push(new vscode.CodeLens(range, {
+        title: '$(go-to-file) Focus in diagram',
+        command: 'dbmlx.focusTableInDiagram',
+        arguments: [rawName],
+      }));
+    }
+    return lenses;
   }
 }
 
@@ -957,5 +1063,6 @@ export function registerLspProviders(
       'dbmlx',
       new DbmlxFormattingProvider(),
     ),
+    vscode.languages.registerCodeLensProvider('dbmlx', new DbmlxCodeLensProvider()),
   );
 }

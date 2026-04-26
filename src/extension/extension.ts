@@ -38,6 +38,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('dbmlx.resetView',    () => DiagramPanel.getActive()?.sendViewportCommand('resetView')),
     vscode.commands.registerCommand('dbmlx.fitToContent', () => DiagramPanel.getActive()?.sendViewportCommand('fitToContent')),
     vscode.commands.registerCommand('dbmlx.exportSvg',    () => DiagramPanel.getActive()?.exportSvg()),
+    vscode.commands.registerCommand('dbmlx.exportPng',    () => DiagramPanel.getActive()?.exportPng()),
+
+    vscode.commands.registerCommand('dbmlx.focusTableInDiagram', (rawName?: string) => {
+      if (typeof rawName !== 'string') {
+        vscode.window.showInformationMessage('Click the "Focus in diagram" CodeLens link above a Table definition.');
+        return;
+      }
+      const stripped = rawName.replace(/"/g, '');
+      const table = index.getTable(stripped) ?? index.getTable(`public.${stripped}`);
+      if (!table) {
+        vscode.window.showWarningMessage(`dbmlx: table "${stripped}" not found in index.`);
+        return;
+      }
+      const uri = resolveActiveDbmlxUri();
+      if (!uri) {
+        vscode.window.showWarningMessage('dbmlx: no active .dbmlx editor — open the file first.');
+        return;
+      }
+      const rootUri = index.resolveRootUri(uri);
+      const panel = DiagramPanel.get(rootUri) ?? DiagramPanel.get(uri);
+      if (!panel) {
+        vscode.window.showWarningMessage('dbmlx: diagram not open — run "DBMLX: Open Diagram" first.');
+        return;
+      }
+      panel.focusTableInDiagram(table.name);
+    }),
   );
 }
 

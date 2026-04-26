@@ -42,6 +42,7 @@ export interface ResolvedSchema {
 
 const INCLUDE_RE = /^(?:\/\/|!)include\s+"([^"]+)"/;
 const TABLE_DEF_RE = /^\s*[Tt]able\s+([\w."]+(?:\.[\w."]+)?)\s*(?:[Aa]s\s+\w+)?\s*(?:\[[^\]]*\])?\s*\{/;
+const ENUM_DEF_RE = /^\s*[Ee]num\s+(?:"([^"]+)"|(\w+))\s*\{/;
 
 export class WorkspaceIndex implements vscode.Disposable {
   /** Raw source + includes per file, populated by scanning. */
@@ -59,6 +60,8 @@ export class WorkspaceIndex implements vscode.Disposable {
   private readonly tableLocations = new Map<QualifiedName, SymbolLocation>();
   /** "schema.table\0col" → source file + line for column definitions. */
   private readonly columnLocations = new Map<string, SymbolLocation>();
+  /** Enum name → source file + line (from regex scan). */
+  private readonly enumLocations = new Map<string, SymbolLocation>();
 
   private readonly _onChange = new vscode.EventEmitter<vscode.Uri>();
   public readonly onChange: vscode.Event<vscode.Uri> = this._onChange.event;
@@ -413,9 +416,18 @@ export class WorkspaceIndex implements vscode.Disposable {
   }
 
   /** Phase 3: regex-scan each file individually for table + column definition lines. */
+  public getEnumNames(uri: vscode.Uri): string[] {
+    const reachable = this.reachableUris(uri);
+    return [...this.enumLocations.entries()]
+      .filter(([, loc]) => reachable.has(loc.uri.toString()))
+      .map(([name]) => name)
+      .sort();
+  }
+
   private rebuildLocationTable(): void {
     this.tableLocations.clear();
     this.columnLocations.clear();
+    this.enumLocations.clear();
 
     const COL_RE = /^\s{1,}(?:"([^"]+)"|(\w+))\s+\S/;
     const SKIP_RE = /^\s*(indexes|note|Note)\s*[:{]/;
@@ -428,6 +440,14 @@ export class WorkspaceIndex implements vscode.Disposable {
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? '';
+
+        const enumMatch = ENUM_DEF_RE.exec(line);
+        if (enumMatch && depth === 0) {
+          const enumName = (enumMatch[1] ?? enumMatch[2])!.replace(/"/g, '');
+          if (!this.enumLocations.has(enumName)) {
+            this.enumLocations.set(enumName, { uri: f.uri, line: i });
+          }
+        }
 
         const tableMatch = TABLE_DEF_RE.exec(line);
         if (tableMatch && depth === 0) {

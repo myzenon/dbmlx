@@ -1,6 +1,6 @@
 # DBMLX Language — AI Reference
 
-Version: 0.1.18
+Version: 0.2.0
 
 DBMLX (`.dbmlx`) is a superset of DBML. All standard DBML syntax is valid.
 This file documents only the dbmlx-specific extensions that don't exist in standard DBML.
@@ -141,6 +141,31 @@ Ref annotations are visualized when the corresponding view toggle is enabled:
 | `increment` | `increment=true\|false` | auto-increment status before |
 
 All `modify:` keys can be combined freely with standard column settings (`pk`, `not null`, `unique`, etc.) in any order.
+
+---
+
+## Editor features
+
+### CodeLens — Focus in diagram
+
+A "Focus in diagram" CodeLens link appears above each `Table` definition in the editor.
+Clicking it pans and zooms the open diagram to that table (un-hiding and un-collapsing its group if needed).
+Works from both root files and `!include`d module files.
+
+To enable: requires `"editor.codeLens": true` in VS Code settings (default on).
+
+### Column hover highlight
+
+Hovering a column in the diagram highlights all FK relationships connected to it:
+- Hovered column and all connected columns get an amber background.
+- Related edges turn yellow and thicken; unrelated edges dim.
+- Junction dots on merged trunk lines follow the same state.
+
+### Edge hover tooltip
+
+Hovering a relation line shows a tooltip: `source.col → target.col` and cardinality (`N : 1` etc.).
+Implemented via a wide transparent hit-area path (stroke-width 12) overlaid on each edge; the tooltip
+renders at mouse position using `position: fixed` outside the SVG.
 
 ---
 

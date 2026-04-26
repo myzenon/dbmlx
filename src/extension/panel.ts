@@ -85,8 +85,16 @@ export class DiagramPanel {
     this.post({ type: 'viewport:command', payload: { action } });
   }
 
+  public focusTableInDiagram(name: string): void {
+    this.post({ type: 'diagram:focusTable', name });
+  }
+
   public exportSvg(): void {
     this.post({ type: 'export:request' });
+  }
+
+  public exportPng(): void {
+    this.post({ type: 'export:png:request' });
   }
 
   public async resetLayout(): Promise<void> {

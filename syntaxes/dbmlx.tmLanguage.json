@@ -196,7 +196,7 @@
     },
     "tablegroup-block": {
       "name": "meta.tablegroup.dbmlx",
-      "begin": "(?i)\\b(TableGroup)\\s+(\\w+)\\s*(\\{)",
+      "begin": "(?i)\\b(TableGroup)\\s+(\"[^\"]+\"|\\w+)\\s*(\\{)",
       "beginCaptures": {
         "1": { "name": "keyword.other.tablegroup.dbmlx" },
         "2": { "name": "entity.name.type.tablegroup.dbmlx" },
@@ -210,8 +210,16 @@
         { "include": "#comment" },
         { "include": "#note-statement" },
         {
+          "comment": "Qualified table name: schema.table (quoted or unquoted)",
+          "match": "(\"[^\"]+\"|\\w+)\\.(\"[^\"]+\"|\\w+)",
+          "captures": {
+            "1": { "name": "entity.name.namespace.dbmlx" },
+            "2": { "name": "entity.name.type.table.dbmlx" }
+          }
+        },
+        {
           "name": "entity.name.type.table.dbmlx",
-          "match": "\\b[\\w.]+\\b"
+          "match": "\"[^\"]+\"|\\b\\w+\\b"
         }
       ]
     },

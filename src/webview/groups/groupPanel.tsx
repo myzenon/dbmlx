@@ -39,7 +39,7 @@ export function GroupPanel() {
       const flags = new Set<AnnotationFilter>();
       if (t.tableChange === 'add') flags.add('add');
       if (t.tableChange === 'drop') flags.add('drop');
-      if (t.columnChanges && Object.keys(t.columnChanges).length > 0) flags.add('modified');
+      if (t.tableChange === 'modify' || (t.columnChanges && Object.keys(t.columnChanges).length > 0)) flags.add('modified');
       if (flags.size) map.set(t.name, flags);
     }
     return map;
@@ -316,7 +316,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
         <li class="ddd-group-children">
           <ul class="ddd-table-list">
             {memberTables.map((name) => (
-              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} annFlags={tableAnnotations.get(name)} groupName={group.name} />
+              <TableRow key={name} tableName={name} hidden={hiddenTables.has(name)} annFlags={tableAnnotations.get(name)} groupName={group.name} groupColor={color} />
             ))}
           </ul>
         </li>
@@ -325,7 +325,9 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
   );
 }
 
-function TableRow({ tableName, hidden, annFlags, groupName }: { tableName: string; hidden: boolean; annFlags?: Set<AnnotationFilter>; groupName?: string }) {
+function TableRow({ tableName, hidden, annFlags, groupName, groupColor }: { tableName: string; hidden: boolean; annFlags?: Set<AnnotationFilter>; groupName?: string; groupColor?: string }) {
+  const tableColors = useAppStore((s) => s.tableColors);
+  const effectiveColor = tableColors.get(tableName) ?? groupColor;
   const shortName = tableName.startsWith('public.') ? tableName.slice(7) : tableName;
   const toggle = () => {
     const next = !hidden;
@@ -345,7 +347,7 @@ function TableRow({ tableName, hidden, annFlags, groupName }: { tableName: strin
   };
   const badge = annFlags?.has('add') ? 'add' : annFlags?.has('drop') ? 'drop' : annFlags?.has('modified') ? 'modified' : null;
   return (
-    <li class="ddd-table-row">
+    <li class="ddd-table-row" style={effectiveColor ? { borderLeftColor: effectiveColor } : undefined}>
       <button class="ddd-table-row__name" title={`Focus ${tableName}`} onClick={() => focusTable(tableName)}>{shortName}</button>
       {badge ? <span class={`ddd-table-ann-dot ddd-table-ann-dot--${badge}`} title={badge === 'add' ? 'New table' : badge === 'drop' ? 'Table removed' : 'Has column changes'} /> : null}
       <button

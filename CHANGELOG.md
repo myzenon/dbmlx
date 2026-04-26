@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0] - 2026-04-26
+
+### Added
+- **Column hover highlight**: hovering any column in the diagram highlights all FK edges connected to it (amber column background, yellow edges, dimmed unrelated edges and junction dots).
+- **Edge hover tooltip**: hovering a relation line shows a tooltip with `source.col → target.col` and cardinality (`N : 1` etc.).
+- **Export Diagram as PNG**: new `DBMLX: Export Diagram as PNG` command (also available via the PNG button in the actions panel).
+- **CodeLens — Focus in diagram**: a `$(go-to-file) Focus in diagram` link above each `Table` definition in the editor; click to pan and zoom the open diagram to that table, un-hiding its group if needed. Works from both root files and `!include`d module files.
+- **TableGroup DIFF badge for table renames**: tables with a `[modify: name="old"]` declaration (table rename) now show the orange DIFF dot in the Table Groups panel, consistent with column-level modify annotations.
+
+### Fixed
+- **focusGroup on hidden group**: clicking "Focus" on a hidden group in the group panel no longer silently toggles its visibility — it now unhides all member tables and centers the view correctly.
+
 ## [0.1.18] - 2026-04-26
 
 ### Performance

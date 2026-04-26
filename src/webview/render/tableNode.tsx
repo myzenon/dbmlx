@@ -17,9 +17,10 @@ interface TableNodeProps {
   selected: boolean;
   color?: string;
   fkColumns?: Set<string>;
+  highlightedCols?: Set<string>;
 }
 
-function TableNodeInner({ table, x, y, lod, selected, color, fkColumns }: TableNodeProps) {
+function TableNodeInner({ table, x, y, lod, selected, color, fkColumns, highlightedCols }: TableNodeProps) {
   const size = estimateSize(table.columns.length);
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
   const [showIcons, setShowIcons] = useState(false);
@@ -97,7 +98,7 @@ function TableNodeInner({ table, x, y, lod, selected, color, fkColumns }: TableN
       <TableHeader table={table} configurable showIcons={showIcons} headerStyle={headerStyle} changeCount={changeCount} tableChange={table.tableChange} tableFromName={table.tableFromName} />
       <ul class="ddd-table__cols">
         {visibleCols.map((c) => (
-          <ColumnRow key={c.name} col={c} isFk={fkColumns?.has(c.name) ?? false} change={changes[c.name]} pkIndexChange={pkIndexChangeByCol.get(c.name)} />
+          <ColumnRow key={c.name} col={c} isFk={fkColumns?.has(c.name) ?? false} change={changes[c.name]} pkIndexChange={pkIndexChangeByCol.get(c.name)} tableName={table.name} isHighlighted={highlightedCols?.has(c.name) ?? false} />
         ))}
       </ul>
     </div>
@@ -226,8 +227,9 @@ function TableHeader({ table, configurable, showIcons, headerStyle, changeCount,
   );
 }
 
-function ColumnRow({ col, isFk, change, pkIndexChange }: { col: Column; isFk: boolean; change?: ColumnChange; pkIndexChange?: 'add' | 'drop' }) {
+function ColumnRow({ col, isFk, change, pkIndexChange, tableName, isHighlighted }: { col: Column; isFk: boolean; change?: ColumnChange; pkIndexChange?: 'add' | 'drop'; tableName: string; isHighlighted?: boolean }) {
   const onEnter = (e: Event) => {
+    store.getState().setHoveredColKey(tableName + '\x1f' + col.name);
     if (!col.note) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     store.getState().setTooltip({
@@ -239,6 +241,7 @@ function ColumnRow({ col, isFk, change, pkIndexChange }: { col: Column; isFk: bo
     });
   };
   const onLeave = () => {
+    store.getState().setHoveredColKey(null);
     if (store.getState().tooltip) store.getState().setTooltip(null);
   };
 
@@ -255,7 +258,7 @@ function ColumnRow({ col, isFk, change, pkIndexChange }: { col: Column; isFk: bo
     const fromNotNull = change.fromNotNull ?? col.notNull;
     const fromUnique = change.fromUnique ?? col.unique;
     return (
-      <li class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}`} onMouseEnter={onEnter} onMouseLeave={onLeave}>
+      <li class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}${isHighlighted ? ' is-col-hl' : ''}`} onMouseEnter={onEnter} onMouseLeave={onLeave}>
         <div class="ddd-col__before">
           <span class="ddd-table__col-left">
             <span class={`ddd-table__col-name${fromPk ? ' is-pk' : ''}`}>{fromName}</span>
@@ -289,7 +292,7 @@ function ColumnRow({ col, isFk, change, pkIndexChange }: { col: Column; isFk: bo
 
   return (
     <li
-      class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}`}
+      class={`ddd-table__col${isFk ? ' is-fk' : ''}${changeClass}${isHighlighted ? ' is-col-hl' : ''}`}
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
     >

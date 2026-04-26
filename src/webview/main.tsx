@@ -3,8 +3,8 @@ import { App } from './app';
 import styleSource from './style.css?inline';
 import { store } from './state/store';
 import { postToHost } from './vscode';
-import { fitToContent, resetView, zoomAtCenter } from './render/viewport';
-import { generateSvg } from './render/exportSvg';
+import { fitToContent, focusTable, resetView, zoomAtCenter } from './render/viewport';
+import { generateSvg, svgToPngDataUrl } from './render/exportSvg';
 import type { HostToWebview } from '../shared/types';
 
 {
@@ -40,6 +40,13 @@ window.addEventListener('message', (ev: MessageEvent<HostToWebview>) => {
     }
     case 'export:request':
       postToHost({ type: 'export:svg', payload: { svg: generateSvg(store.getState()) } });
+      return;
+    case 'export:png:request':
+      void svgToPngDataUrl(generateSvg(store.getState())).then((data) =>
+        postToHost({ type: 'export:png', payload: { data } }));
+      return;
+    case 'diagram:focusTable':
+      focusTable(msg.name);
       return;
   }
 });

@@ -124,7 +124,11 @@ export function focusGroup(groupName: string): void {
 
   // Un-hide / un-collapse the group first so its tables are visible.
   const gs = state.groups[groupName];
-  if (gs?.hidden) { state.setGroup(groupName, { hidden: false }); schedulePersist(); }
+  if (gs?.hidden) {
+    state.setGroup(groupName, { hidden: false });
+    for (const t of group.tables) state.setTableHidden(t, false);
+    schedulePersist();
+  }
   if (gs?.collapsed) { state.setGroup(groupName, { collapsed: false }); schedulePersist(); }
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

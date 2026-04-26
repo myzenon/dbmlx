@@ -148,7 +148,9 @@ export type HostToWebview =
   | { type: 'layout:external-change'; payload: Layout }
   | { type: 'theme:change'; payload: { kind: 'light' | 'dark' } }
   | { type: 'viewport:command'; payload: { action: ViewportCommand } }
-  | { type: 'export:request' };
+  | { type: 'export:request' }
+  | { type: 'export:png:request' }
+  | { type: 'diagram:focusTable'; name: QualifiedName };
 
 /* ----- Protocol: Webview → Host ----- */
 

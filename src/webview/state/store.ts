@@ -1,6 +1,6 @@
 import { createStore } from 'zustand/vanilla';
 import { useSyncExternalStore } from 'preact/compat';
-import type { EdgeLayout, GroupLayout, Layout, ParseError, QualifiedName, Schema, TableLayout, ViewportLayout } from '../../shared/types';
+import type { EdgeLayout, GroupLayout, Layout, ParseError, QualifiedName, Ref, Schema, TableLayout, ViewportLayout } from '../../shared/types';
 import type { LayoutAlgorithm } from '../layout/autoLayout';
 
 export interface TooltipState {
@@ -40,6 +40,11 @@ export interface AppState {
   colorizeAddRefs: boolean;
   /** Active DiagramView name, or null = show all tables. Ephemeral, not persisted. */
   activeView: string | null;
+  /** Ephemeral: hovered column key "tableName\x1fcolName", or null. Not persisted. */
+  hoveredColKey: string | null;
+  /** Ephemeral: edge currently hovered in the diagram. Not persisted. */
+  hoveredEdgeRef: Ref | null;
+  edgeTooltipPos: { x: number; y: number } | null;
 }
 
 export interface AppActions {
@@ -65,6 +70,8 @@ export interface AppActions {
   setColorizeAddRefs(v: boolean): void;
   resetPositions(): void;
   setActiveView(name: string | null): void;
+  setHoveredColKey(key: string | null): void;
+  setHoveredEdgeRef(ref: Ref | null, pos?: { x: number; y: number }): void;
 }
 
 const initial: AppState = {
@@ -88,6 +95,9 @@ const initial: AppState = {
   showDropRefs: false,
   colorizeAddRefs: false,
   activeView: null,
+  hoveredColKey: null,
+  hoveredEdgeRef: null,
+  edgeTooltipPos: null,
 };
 
 export const store = createStore<AppState & AppActions>((set, _get) => ({
@@ -211,6 +221,12 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
   },
   setActiveView(name) {
     set({ activeView: name });
+  },
+  setHoveredColKey(key) {
+    set({ hoveredColKey: key });
+  },
+  setHoveredEdgeRef(ref, pos) {
+    set({ hoveredEdgeRef: ref, edgeTooltipPos: pos ?? null });
   },
 }));
 

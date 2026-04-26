@@ -59,6 +59,18 @@ Two isolated runtimes communicating via `postMessage` (types in `src/shared/type
 
 `.ddd-table__actions` (absolute, right edge of header) fades in on `.is-hovered` (set on `TableNode` outer div). Three buttons: **ⓘ info** (click-to-toggle tooltip with full/rename name), **go-to-definition**, **palette**. Names >20 chars are mid-truncated via `midTruncate()`; rename diffs truncate each side to 10.
 
+### Column hover highlight
+
+`hoveredColKey: string | null` in Zustand store (`tableName + '\x1f' + colName`). Set on `pointerenter`/`pointerleave` in `ColumnRow`. `app.tsx` builds `colHighlights: Map<table, Set<col>>` (all connected FK endpoints) from `schema.refs`; passed as `highlightedCols` to each `TableNode`. `edgeLayer.tsx` computes `hlEdgeIds` and adds `ddd-edge-grp--hl` / `ddd-edge-grp--dim` classes to edges and junction circles. Pure CSS, no re-routing on hover.
+
+### Edge hover tooltip
+
+`hoveredEdgeRef: Ref | null` + `edgeTooltipPos` in Zustand store. Each edge `<g>` in `edgeLayer.tsx` has a wide transparent hit-area path (stroke-width 12, `pointer-events: stroke`) that calls `store.getState().setHoveredEdgeRef(ref, {x, y})` on mouse enter/move and clears on leave. `<EdgeTooltip>` in `app.tsx` renders a `position: fixed` div at the mouse position showing `source.col → target.col` and cardinality.
+
+### CodeLens
+
+`DbmlxCodeLensProvider` in `lspProviders.ts` scans each line for `TABLE_HEADER_RE` and emits a `$(go-to-file) Focus in diagram` lens. The command `dbmlx.focusTableInDiagram(rawName)` in `extension.ts` strips quotes, resolves the table via `index.getTable`, finds the panel via `DiagramPanel.get(rootUri) ?? DiagramPanel.get(uri)` (fallback handles module-file diagrams), then calls `panel.focusTableInDiagram(table.name)` → `postMessage diagram:focusTable` → `focusTable()` in `viewport.ts`.
+
 ### Layout file format
 
 Keys alphabetically sorted, integers for coords, `collapsed: false`/`hidden: false` omitted, colors only when custom. Written atomically (tmp → rename). Roundtrip must be byte-identical.
