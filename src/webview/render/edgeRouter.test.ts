@@ -78,9 +78,9 @@ describe('routeRefs — TARGET-side convergence', () => {
     expect(new Set(ids).size).toBe(1);
   });
 
-  it('sourceConvergeGroupId is NOT set (wrong end)', () => {
+  it('convergeHubIsSource is false (hub is target)', () => {
     const routes = routeRefs(THREE_REFS, makeBboxOf(TABLES), COL_Y);
-    for (const r of routes) expect(r.sourceConvergeGroupId).toBeUndefined();
+    for (const r of routes) expect(r.convergeHubIsSource).toBe(false);
   });
 
   it('midSeg suppressed for drag handle', () => {
@@ -139,20 +139,69 @@ describe('routeRefs — SOURCE-side convergence', () => {
     expect(new Set(routes.map((r) => parsePath(r.d)!.ty)).size).toBe(3);
   });
 
-  it('all edges carry the same sourceConvergeGroupId', () => {
+  it('all edges carry the same convergeGroupId', () => {
     const routes = routeRefs(THREE_REFS, makeBboxOf(TABLES), COL_Y);
-    const ids = routes.map((r) => r.sourceConvergeGroupId);
+    const ids = routes.map((r) => r.convergeGroupId);
     expect(ids.every(Boolean)).toBe(true);
     expect(new Set(ids).size).toBe(1);
   });
 
-  it('convergeGroupId (target-side) is NOT set', () => {
+  it('convergeHubIsSource is true (hub is source)', () => {
     const routes = routeRefs(THREE_REFS, makeBboxOf(TABLES), COL_Y);
-    for (const r of routes) expect(r.convergeGroupId).toBeUndefined();
+    for (const r of routes) expect(r.convergeHubIsSource).toBe(true);
   });
 
   it('midSeg suppressed for drag handle', () => {
     const routes = routeRefs(THREE_REFS, makeBboxOf(TABLES), COL_Y);
+    for (const r of routes) expect(r.midSeg).toBeUndefined();
+  });
+});
+
+// ─── Mixed inline + top-level refs ───────────────────────────────────────────
+// Inline refs: @dbml/core flips direction so hub becomes source (relation='1').
+// Top-level Ref: hub stays as target (relation='1').
+// Both must land in the same convergence group so they share a trunk.
+
+describe('routeRefs — mixed inline + top-level convergence', () => {
+  // hub on RIGHT (x=500), fk tables on LEFT (x=0)
+  const TABLES = {
+    hub:  bbox(500, 100),
+    fk1:  bbox(0,  50),
+    fk2:  bbox(0, 250),
+  };
+  const COL_Y = makeColY({ hub: { id: 20 } });
+  const TRUNK_X = 500 - 60; // 440
+
+  // One inline ref (hub=source, relation='1') + one top-level ref (hub=target, relation='1')
+  const MIXED_REFS: Ref[] = [
+    { id: 'inline', source: { table: 'hub', columns: ['id'], relation: '1' }, target: { table: 'fk1', columns: ['fk'], relation: '*' } },
+    { id: 'tl',     source: { table: 'fk2', columns: ['fk'], relation: '*' }, target: { table: 'hub', columns: ['id'], relation: '1' } },
+  ];
+
+  it('both edges share the same convergeGroupId', () => {
+    const routes = routeRefs(MIXED_REFS, makeBboxOf(TABLES), COL_Y);
+    const ids = routes.map((r) => r.convergeGroupId);
+    expect(ids.every(Boolean)).toBe(true);
+    expect(new Set(ids).size).toBe(1);
+  });
+
+  it('inline edge has convergeHubIsSource=true; top-level has convergeHubIsSource=false', () => {
+    const routes = routeRefs(MIXED_REFS, makeBboxOf(TABLES), COL_Y);
+    const inlineRoute = routes.find((r) => r.id === 'inline')!;
+    const tlRoute     = routes.find((r) => r.id === 'tl')!;
+    expect(inlineRoute.convergeHubIsSource).toBe(true);
+    expect(tlRoute.convergeHubIsSource).toBe(false);
+  });
+
+  it('both edges share the same trunk X', () => {
+    const routes = routeRefs(MIXED_REFS, makeBboxOf(TABLES), COL_Y);
+    const midXs = new Set(routes.map((r) => parsePath(r.d)!.midX));
+    expect(midXs.size).toBe(1);
+    expect([...midXs][0]).toBe(TRUNK_X);
+  });
+
+  it('midSeg suppressed for both', () => {
+    const routes = routeRefs(MIXED_REFS, makeBboxOf(TABLES), COL_Y);
     for (const r of routes) expect(r.midSeg).toBeUndefined();
   });
 });
@@ -173,7 +222,7 @@ describe('routeRefs — no convergence cases', () => {
     const colY = makeColY({ target: { id: 20 } });
     const [r] = routeRefs(refs, makeBboxOf(TABLES), colY);
     expect(r!.convergeGroupId).toBeUndefined();
-    expect(r!.sourceConvergeGroupId).toBeUndefined();
+    expect(r!.convergeHubIsSource).toBeUndefined();
     expect(r!.midSeg).toBeDefined(); // drag handle present on non-converge edges
   });
 
@@ -196,7 +245,7 @@ describe('routeRefs — no convergence cases', () => {
     const routes = routeRefs(refs, makeBboxOf(TABLES)); // no resolver
     for (const r of routes) {
       expect(r.convergeGroupId).toBeUndefined();
-      expect(r.sourceConvergeGroupId).toBeUndefined();
+      expect(r.convergeHubIsSource).toBeUndefined();
     }
   });
 });

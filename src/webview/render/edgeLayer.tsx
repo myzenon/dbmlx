@@ -82,10 +82,8 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
     return y - 5;
   };
 
-  // For target-converge groups, only the first edge renders the target marker/label.
-  // For source-converge groups, only the first edge renders the source marker/label.
-  const renderedConvergeTargets = new Set<string>();
-  const renderedConvergeSources = new Set<string>();
+  // For converge groups, only the first edge renders the hub-side marker/label.
+  const renderedConvergeGroups = new Set<string>();
   // Collect one junction point per converge group for the dot overlay.
   const junctions: Array<{ x: number; y: number }> = [];
 
@@ -127,13 +125,15 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
         const srcLabelY = labelY(srcLabelX, r.source.y);
         const tgtLabelY = labelY(tgtLabelX, r.target.y);
 
-        // Suppress duplicate markers/labels for converge groups.
-        const isTgtConvergeDup = r.convergeGroupId !== undefined && renderedConvergeTargets.has(r.convergeGroupId);
-        if (r.convergeGroupId && !isTgtConvergeDup) renderedConvergeTargets.add(r.convergeGroupId);
-        const isSrcConvergeDup = r.sourceConvergeGroupId !== undefined && renderedConvergeSources.has(r.sourceConvergeGroupId);
-        if (r.sourceConvergeGroupId && !isSrcConvergeDup) renderedConvergeSources.add(r.sourceConvergeGroupId);
-        // Collect junction dot once per group (first non-duplicate edge that has a junction).
-        if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) junctions.push(r.convergeJunction);
+        // Suppress hub-side marker/label for non-first edges in a converge group.
+        const isConvergeDup = r.convergeGroupId !== undefined && renderedConvergeGroups.has(r.convergeGroupId);
+        if (r.convergeGroupId && !isConvergeDup) renderedConvergeGroups.add(r.convergeGroupId);
+        // Collect junction dot once per group.
+        if (r.convergeJunction && !isConvergeDup) junctions.push(r.convergeJunction);
+
+        // Hub is at source → suppress startMarker for dup; hub at target → suppress endMarker.
+        const suppressStart = isConvergeDup && r.convergeHubIsSource === true;
+        const suppressEnd   = isConvergeDup && r.convergeHubIsSource === false;
 
         const isAddRef = ref?.refChange === 'add';
         const isDropRef = ref?.refChange === 'drop';
@@ -143,11 +143,11 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
             <path
               d={r.d}
               class="ddd-edge"
-              markerStart={isSrcConvergeDup ? undefined : startMarker}
-              markerEnd={isTgtConvergeDup ? undefined : endMarker}
+              markerStart={suppressStart ? undefined : startMarker}
+              markerEnd={suppressEnd ? undefined : endMarker}
             />
-            {showCardinalityLabels && !isSrcConvergeDup ? <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text> : null}
-            {showCardinalityLabels && !isTgtConvergeDup ? <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text> : null}
+            {showCardinalityLabels && !suppressStart ? <text class="ddd-edge-label" x={srcLabelX} y={srcLabelY}>{srcLabel}</text> : null}
+            {showCardinalityLabels && !suppressEnd ? <text class="ddd-edge-label" x={tgtLabelX} y={tgtLabelY}>{tgtLabel}</text> : null}
             {r.midSeg && !isDropRef ? (
               <line
                 class="ddd-edge-handle"

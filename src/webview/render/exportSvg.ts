@@ -230,8 +230,7 @@ export function generateSvg(state: AppState): string {
   }
 
   // Edges (draw before tables so tables sit on top)
-  const renderedConvergeTargets = new Set<string>();
-  const renderedConvergeSources = new Set<string>();
+  const renderedConvergeGroups = new Set<string>();
   for (const r of routes) {
     const ref = refById.get(r.id);
     const srcRel = ref?.source.relation ?? '1';
@@ -242,22 +241,22 @@ export function generateSvg(state: AppState): string {
     const tgtLabel    = tgtRel === '*' ? 'N' : '1';
     const srcLabelX   = r.source.x + (r.source.side === 'right' ? 16 : -16);
     const tgtLabelX   = r.target.x + (r.target.side === 'right' ? 16 : -16);
-    const isTgtConvergeDup = r.convergeGroupId !== undefined && renderedConvergeTargets.has(r.convergeGroupId);
-    if (r.convergeGroupId && !isTgtConvergeDup) renderedConvergeTargets.add(r.convergeGroupId);
-    const isSrcConvergeDup = r.sourceConvergeGroupId !== undefined && renderedConvergeSources.has(r.sourceConvergeGroupId);
-    if (r.sourceConvergeGroupId && !isSrcConvergeDup) renderedConvergeSources.add(r.sourceConvergeGroupId);
-    const activeStartMarker = isSrcConvergeDup ? '' : ` marker-start="${startMarker}"`;
-    const activeEndMarker   = isTgtConvergeDup ? '' : ` marker-end="${endMarker}"`;
+    const isConvergeDup = r.convergeGroupId !== undefined && renderedConvergeGroups.has(r.convergeGroupId);
+    if (r.convergeGroupId && !isConvergeDup) renderedConvergeGroups.add(r.convergeGroupId);
+    const suppressStart = isConvergeDup && r.convergeHubIsSource === true;
+    const suppressEnd   = isConvergeDup && r.convergeHubIsSource === false;
+    const activeStartMarker = suppressStart ? '' : ` marker-start="${startMarker}"`;
+    const activeEndMarker   = suppressEnd   ? '' : ` marker-end="${endMarker}"`;
     const isDropRef = ref?.refChange === 'drop';
     const refStroke = ref?.refChange === 'add' ? migAdd : isDropRef ? migDrop : edgeLine;
     const dropAttrs = isDropRef ? ' stroke-dasharray="5 4" opacity="0.55"' : '';
     L.push(`<path d="${r.d}" fill="none" stroke="${refStroke}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}${dropAttrs}/>`);
-    if (r.convergeJunction && !isTgtConvergeDup && !isSrcConvergeDup) {
+    if (r.convergeJunction && !isConvergeDup) {
       L.push(`<circle cx="${r.convergeJunction.x}" cy="${r.convergeJunction.y}" r="4" fill="${edgeLine}"/>`);
     }
     if (showCardinalityLabels) {
-      if (!isSrcConvergeDup) L.push(`<text x="${srcLabelX}" y="${r.source.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${srcLabel}</text>`);
-      if (!isTgtConvergeDup) L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
+      if (!suppressStart) L.push(`<text x="${srcLabelX}" y="${r.source.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${srcLabel}</text>`);
+      if (!suppressEnd)   L.push(`<text x="${tgtLabelX}" y="${r.target.y - 4}" font-family="system-ui,sans-serif" font-size="10" fill="${fgMuted}" text-anchor="middle">${tgtLabel}</text>`);
     }
   }
 

@@ -12,15 +12,17 @@ export interface EdgeRoute {
   source: { x: number; y: number; side: Side };
   target: { x: number; y: number; side: Side };
   /**
-   * Set when multiple edges arrive at the same target column (Supabase-style convergence).
-   * All edges in the group share the same tail (trunkX → tgtY → tgtX).
+   * Set when this edge belongs to a convergence group (≥2 edges sharing the same hub column).
+   * The hub is the relation='1' endpoint. Edges from both inline refs (hub=source) and
+   * top-level Ref: declarations (hub=target) are merged into the same group.
    */
   convergeGroupId?: string;
   /**
-   * Set when multiple edges depart from the same source column (mirror of convergeGroupId).
-   * All edges in the group share the same head (srcX → srcY → trunkX).
+   * True when the hub (relation='1') endpoint is at the source end of this edge.
+   * False when the hub is at the target end.
+   * Used by renderers to know which arrowhead to suppress for non-first group members.
    */
-  sourceConvergeGroupId?: string;
+  convergeHubIsSource?: boolean;
   /**
    * The world-space point where this edge's converge trunk meets the fanning-out branch.
    * Renderers should draw a filled junction dot here (once per group) so the user can
@@ -119,15 +121,16 @@ export function routeRefs(
   const PORT_SEP = 6;    // px between edges sharing the exact same column port
 
   // Compute raw port points for every edge.
-  // sourceConvergeKey / targetConvergeKey are set when the respective column Y is resolved
-  // — used to group edges that share a common endpoint column.
+  // convergeKey is set when the hub (relation='1') endpoint has a resolved column Y.
+  // Using the hub endpoint normalises inline refs (hub=source, reversed by @dbml/core)
+  // and top-level Ref: declarations (hub=target) into the same convergence group.
   type PortedEdge = {
     idx: number;
     a: { x: number; y: number };
     b: { x: number; y: number };
     userDx: number;
-    sourceConvergeKey?: string; // edges sharing the same SOURCE column
-    targetConvergeKey?: string; // edges sharing the same TARGET column
+    convergeKey?: string;  // hub-based key; same string for inline and top-level refs
+    hubIsSource?: boolean; // true when the hub is the source endpoint of this edge
   };
   const ported: Array<PortedEdge | null> = [];
 
@@ -138,66 +141,59 @@ export function routeRefs(
 
     let sourceY: number | undefined;
     let targetY: number | undefined;
-    let sourceConvergeKey: string | undefined;
-    let targetConvergeKey: string | undefined;
+    let convergeKey: string | undefined;
+    let hubIsSource: boolean | undefined;
 
     if (columnYResolver) {
+      // Pin source column Y (if available) — used for FK-end alignment
       if (assign.sourceSide === 'left' || assign.sourceSide === 'right') {
         const sourceCol = d.ref.source.columns[0];
         const offset = sourceCol ? columnYResolver(d.ref.source.table, sourceCol) : undefined;
-        if (offset !== undefined) {
-          sourceY = d.srcBbox.y + offset;
-          sourceConvergeKey = `${d.ref.source.table}|${assign.sourceSide}|${sourceCol}`;
-        }
+        if (offset !== undefined) sourceY = d.srcBbox.y + offset;
       }
+      // Pin target column Y (if available)
       if (assign.targetSide === 'left' || assign.targetSide === 'right') {
         const targetCol = d.ref.target.columns[0];
         const offset = targetCol ? columnYResolver(d.ref.target.table, targetCol) : undefined;
-        if (offset !== undefined) {
-          targetY = d.tgtBbox.y + offset;
-          targetConvergeKey = `${d.ref.target.table}|${assign.targetSide}|${targetCol}`;
-        }
+        if (offset !== undefined) targetY = d.tgtBbox.y + offset;
+      }
+      // Build a unified convergence key based on the hub (relation='1') endpoint.
+      // This ensures inline refs (hub=source) and top-level Ref: (hub=target) are in the same group.
+      const srcIsHub = d.ref.source.relation === '1';
+      if (srcIsHub && sourceY !== undefined) {
+        convergeKey = `${d.ref.source.table}|${assign.sourceSide}|${d.ref.source.columns[0]}`;
+        hubIsSource = true;
+      } else if (!srcIsHub && targetY !== undefined) {
+        convergeKey = `${d.ref.target.table}|${assign.targetSide}|${d.ref.target.columns[0]}`;
+        hubIsSource = false;
       }
     }
 
     const a = portPoint(d.srcBbox, assign.sourceSide, assign.sourceRatio, sourceY);
     const b = portPoint(d.tgtBbox, assign.targetSide, assign.targetRatio, targetY);
     const userDx = offsetResolver?.(d.ref.id)?.dx ?? 0;
-    ported.push({ idx: i, a, b, userDx, sourceConvergeKey, targetConvergeKey });
+    ported.push({ idx: i, a, b, userDx, convergeKey, hubIsSource });
   }
 
-  // Build converge groups for both ends. Only groups with ≥2 members are active.
-  function buildConvergeGroups(keyOf: (p: PortedEdge) => string | undefined): {
-    buckets: Map<string, number[]>;
-    groupOf: Map<number, string>;
-  } {
-    const buckets = new Map<string, number[]>();
+  // Build unified converge groups (hub-based). Only groups with ≥2 members are active.
+  const convergeBuckets = new Map<string, number[]>();
+  if (merge) {
     for (let i = 0; i < ported.length; i++) {
       const p = ported[i];
-      if (!p) continue;
-      const key = keyOf(p);
-      if (!key) continue;
-      let bucket = buckets.get(key);
-      if (!bucket) { bucket = []; buckets.set(key, bucket); }
+      if (!p?.convergeKey) continue;
+      let bucket = convergeBuckets.get(p.convergeKey);
+      if (!bucket) { bucket = []; convergeBuckets.set(p.convergeKey, bucket); }
       bucket.push(i);
     }
-    const groupOf = new Map<number, string>();
-    for (const [key, idxs] of buckets) {
-      if (idxs.length < 2) continue;
-      for (const i of idxs) groupOf.set(i, key);
-    }
-    return { buckets, groupOf };
+  }
+  const convergeGroupOf = new Map<number, string>();
+  for (const [key, idxs] of convergeBuckets) {
+    if (idxs.length < 2) continue;
+    for (const i of idxs) convergeGroupOf.set(i, key);
   }
 
-  const { buckets: tgtConvergeBuckets, groupOf: tgtConvergeGroupOf } = merge
-    ? buildConvergeGroups((p) => p.targetConvergeKey)
-    : { buckets: new Map<string, number[]>(), groupOf: new Map<number, string>() };
-  const { buckets: srcConvergeBuckets, groupOf: srcConvergeGroupOf } = merge
-    ? buildConvergeGroups((p) => p.sourceConvergeKey)
-    : { buckets: new Map<string, number[]>(), groupOf: new Map<number, string>() };
-
-  // Stagger Y for edges sharing the exact same source port — but skip source-converge members
-  // (they must all stay at the same Y to form the shared trunk head).
+  // Stagger Y for edges sharing the exact same source port — skip converge members whose
+  // hub is at the source (they must stay at the same Y to form the shared trunk head).
   const srcPortGroups = new Map<string, number[]>();
   for (let i = 0; i < ported.length; i++) {
     const p = ported[i];
@@ -208,14 +204,14 @@ export function routeRefs(
   }
   for (const [, idxs] of srcPortGroups) {
     if (idxs.length < 2) continue;
-    const toStagger = idxs.filter((i) => !srcConvergeGroupOf.has(i));
+    const toStagger = idxs.filter((i) => !(convergeGroupOf.has(i) && ported[i]?.hubIsSource));
     const n = toStagger.length;
     for (let i = 0; i < n; i++) {
       ported[toStagger[i]!]!.a.y += Math.round((i - (n - 1) / 2) * PORT_SEP);
     }
   }
 
-  // Same for target ports — skip target-converge members.
+  // Same for target ports — skip converge members whose hub is at the target.
   const tgtPortGroups = new Map<string, number[]>();
   for (let i = 0; i < ported.length; i++) {
     const p = ported[i];
@@ -226,7 +222,7 @@ export function routeRefs(
   }
   for (const [, idxs] of tgtPortGroups) {
     if (idxs.length < 2) continue;
-    const toStagger = idxs.filter((i) => !tgtConvergeGroupOf.has(i));
+    const toStagger = idxs.filter((i) => !(convergeGroupOf.has(i) && !ported[i]?.hubIsSource));
     const n = toStagger.length;
     for (let i = 0; i < n; i++) {
       ported[toStagger[i]!]!.b.y += Math.round((i - (n - 1) / 2) * PORT_SEP);
@@ -252,63 +248,39 @@ export function routeRefs(
     }
   }
 
-  // Compute a shared trunk X for each converge group (both source-side and target-side).
-  // The trunk sits TRUNK_OFFSET px outside the shared-endpoint table edge.
+  // Compute a shared trunk X for each converge group.
+  // The trunk sits TRUNK_OFFSET px outside the hub table edge.
   const TRUNK_OFFSET = 60;
-  const tgtConvergeMidX = new Map<number, number>();
-  for (const [, idxs] of tgtConvergeBuckets) {
+  const convergeMidX = new Map<number, number>();
+  for (const [, idxs] of convergeBuckets) {
     if (idxs.length < 2) continue;
-    const first = ported[idxs[0]!]!;
-    const assign = portAssign[idxs[0]!]!;
-    const trunkX = assign.targetSide === 'left' ? first.b.x - TRUNK_OFFSET : first.b.x + TRUNK_OFFSET;
-    for (const i of idxs) tgtConvergeMidX.set(i, trunkX);
-  }
-  const srcConvergeMidX = new Map<number, number>();
-  for (const [, idxs] of srcConvergeBuckets) {
-    if (idxs.length < 2) continue;
-    const first = ported[idxs[0]!]!;
-    const assign = portAssign[idxs[0]!]!;
-    const trunkX = assign.sourceSide === 'left' ? first.a.x - TRUNK_OFFSET : first.a.x + TRUNK_OFFSET;
-    for (const i of idxs) srcConvergeMidX.set(i, trunkX);
+    const firstIdx = idxs[0]!;
+    const first = ported[firstIdx]!;
+    const assign = portAssign[firstIdx]!;
+    const hubAtSrc = first.hubIsSource;
+    const trunkX = hubAtSrc
+      ? (assign.sourceSide === 'left' ? first.a.x - TRUNK_OFFSET : first.a.x + TRUNK_OFFSET)
+      : (assign.targetSide === 'left' ? first.b.x - TRUNK_OFFSET : first.b.x + TRUNK_OFFSET);
+    for (const i of idxs) convergeMidX.set(i, trunkX);
   }
 
-  // 4b. De-coincide convergence trunks: when multiple target-convergence groups share the
-  // same trunkX (because their target tables are at the same X, so each group independently
-  // computes target.x ± TRUNK_OFFSET to the same value), stagger the trunks apart so they
-  // don't draw on top of each other and appear as a single merged line.
+  // 4b. De-coincide convergence trunks: when multiple convergence groups share the same trunkX,
+  // stagger the trunks apart so they don't draw on top of each other.
   const TRUNK_STAGGER = 12;
-
-  const tgtTrunkGroups = new Map<number, number[][]>(); // trunkX → list of per-group edge-index arrays
-  for (const [, idxs] of tgtConvergeBuckets) {
+  const trunkXGroups = new Map<number, number[][]>(); // trunkX → list of per-group edge-index arrays
+  for (const [, idxs] of convergeBuckets) {
     if (idxs.length < 2) continue;
-    const trunkX = tgtConvergeMidX.get(idxs[0]!)!;
-    let g = tgtTrunkGroups.get(trunkX);
-    if (!g) { g = []; tgtTrunkGroups.set(trunkX, g); }
+    const trunkX = convergeMidX.get(idxs[0]!)!;
+    let g = trunkXGroups.get(trunkX);
+    if (!g) { g = []; trunkXGroups.set(trunkX, g); }
     g.push(idxs);
   }
-  for (const [, groups] of tgtTrunkGroups) {
+  for (const [, groups] of trunkXGroups) {
     if (groups.length < 2) continue;
     const n = groups.length;
     for (let j = 0; j < n; j++) {
       const dx = Math.round((j - (n - 1) / 2) * TRUNK_STAGGER);
-      for (const i of groups[j]!) tgtConvergeMidX.set(i, tgtConvergeMidX.get(i)! + dx);
-    }
-  }
-
-  const srcTrunkGroups = new Map<number, number[][]>();
-  for (const [, idxs] of srcConvergeBuckets) {
-    if (idxs.length < 2) continue;
-    const trunkX = srcConvergeMidX.get(idxs[0]!)!;
-    let g = srcTrunkGroups.get(trunkX);
-    if (!g) { g = []; srcTrunkGroups.set(trunkX, g); }
-    g.push(idxs);
-  }
-  for (const [, groups] of srcTrunkGroups) {
-    if (groups.length < 2) continue;
-    const n = groups.length;
-    for (let j = 0; j < n; j++) {
-      const dx = Math.round((j - (n - 1) / 2) * TRUNK_STAGGER);
-      for (const i of groups[j]!) srcConvergeMidX.set(i, srcConvergeMidX.get(i)! + dx);
+      for (const i of groups[j]!) convergeMidX.set(i, convergeMidX.get(i)! + dx);
     }
   }
 
@@ -318,15 +290,14 @@ export function routeRefs(
   const COINCIDE_SEP = 8;
   const tentativeMidX: Array<number | null> = ported.map((p, i) => {
     if (!p) return null;
-    if (tgtConvergeGroupOf.has(i)) return tgtConvergeMidX.get(i)!;
-    if (srcConvergeGroupOf.has(i)) return srcConvergeMidX.get(i)!;
+    if (convergeGroupOf.has(i)) return convergeMidX.get(i)!;
     return Math.round((p.a.x + p.b.x) / 2 + p.userDx + (midXOffset.get(i) ?? 0));
   });
 
   const coincideMap = new Map<number, number[]>();
   for (let i = 0; i < tentativeMidX.length; i++) {
     const mx = tentativeMidX[i];
-    if (mx == null || tgtConvergeGroupOf.has(i) || srcConvergeGroupOf.has(i)) continue;
+    if (mx == null || convergeGroupOf.has(i)) continue;
     const mxKey: number = mx;
     let bucket = coincideMap.get(mxKey);
     if (!bucket) { bucket = []; coincideMap.set(mxKey, bucket); }
@@ -360,26 +331,23 @@ export function routeRefs(
     const assign = portAssign[i]!;
 
     const { a, b, userDx } = p;
-    const isTgtConverge = tgtConvergeGroupOf.has(i);
-    const isSrcConverge = srcConvergeGroupOf.has(i);
-    const isAnyConverge = isTgtConverge || isSrcConverge;
+    const isConverge = convergeGroupOf.has(i);
 
-    const midX = isTgtConverge
-      ? tgtConvergeMidX.get(i)!
-      : isSrcConverge
-        ? srcConvergeMidX.get(i)!
-        : Math.round((a.x + b.x) / 2 + userDx + (midXOffset.get(i) ?? 0) + (coincideExtra.get(i) ?? 0));
+    const midX = isConverge
+      ? convergeMidX.get(i)!
+      : Math.round((a.x + b.x) / 2 + userDx + (midXOffset.get(i) ?? 0) + (coincideExtra.get(i) ?? 0));
 
     const path = `M${a.x},${a.y} H${midX} V${b.y} H${b.x}`;
     // Converge edges share a fixed trunk — suppress drag handle so edges move together.
-    const midSeg = isAnyConverge ? undefined : { x1: midX, y1: a.y, x2: midX, y2: b.y, axis: 'v' as const };
+    const midSeg = isConverge ? undefined : { x1: midX, y1: a.y, x2: midX, y2: b.y, axis: 'v' as const };
 
-    // Junction dot position: the corner where the shared trunk meets the individual spokes.
-    // Source-converge: trunk departs from shared srcY → junction at (trunkX, srcY).
-    // Target-converge: individual paths converge at tgtY → junction at (trunkX, tgtY).
+    // Junction dot at the corner where the shared trunk meets the individual spokes.
+    // Hub-at-source: trunk departs from shared hubY (a.y) → junction at (trunkX, a.y).
+    // Hub-at-target: spokes converge to hubY (b.y)     → junction at (trunkX, b.y).
     let convergeJunction: { x: number; y: number } | undefined;
-    if (isSrcConverge) convergeJunction = { x: midX, y: a.y };
-    else if (isTgtConverge) convergeJunction = { x: midX, y: b.y };
+    if (isConverge) {
+      convergeJunction = p.hubIsSource ? { x: midX, y: a.y } : { x: midX, y: b.y };
+    }
 
     out.push({
       id: d.ref.id,
@@ -387,8 +355,8 @@ export function routeRefs(
       midSeg,
       source: { ...a, side: assign.sourceSide },
       target: { ...b, side: assign.targetSide },
-      convergeGroupId: tgtConvergeGroupOf.get(i),
-      sourceConvergeGroupId: srcConvergeGroupOf.get(i),
+      convergeGroupId: convergeGroupOf.get(i),
+      convergeHubIsSource: isConverge ? p.hubIsSource : undefined,
       convergeJunction,
     });
   }
