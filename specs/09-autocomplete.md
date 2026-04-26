@@ -117,10 +117,14 @@ DiagramView ${1:name} {\n\tTables { ${0} }\n}
 
 ## G. Known bugs to fix (as of April 2026)
 
-- [ ] **A1** — Typing `"` produces `""item""` double-quoted results
-- [ ] Audit all trigger characters (`.`, `"`, ` `, `:`) for A1–A5
-- [ ] Verify chain (C) fires without `Ctrl+Space` after each step
-- [ ] Add `filterText` for quoted table/column completions (E5)
+- [x] **A1/A4** — Quote-token detection covers unclosed `"<partial>` (parity-based), so accepting completions never produces `""item""` or `""schema".pub`
+- [x] **B13/B14** — `isInsideStringOrComment()` guard returns no completions inside `//`, `'…'`, or `` `…` ``
+- [x] **C2** — `Ref:` and right-side-of-operator positions now offer schema names AND unqualified `"tableName"` items
+- [x] **D1/D2** — `preselect` on PK columns and `public` schema; `sortText` ranks PKs before non-PKs and curated keyword order
+- [x] **D4** — Indexes and composite-FK tuples deduplicate columns already mentioned earlier on the line
+- [x] **E5** — All quoted items set `filterText` to the unquoted form
+- [x] Pure helpers (`computeQuoteReplaceRange`, `classifyBracket`, `classifyRefStep`, `usedColumnsOnLine`, …) extracted to `completionContext.ts` with 35 unit tests
+- [ ] **E6** — `commitCharacters` so typing `.` after a table-name suggestion commits and immediately triggers column completion
 - [ ] Confirm completions still work when `!include`'d files have parse errors (F1+F2)
 
 ---
