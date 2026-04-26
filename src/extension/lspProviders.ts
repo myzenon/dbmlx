@@ -937,6 +937,9 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
 
 // ── Registration ───────────────────────────────────────────────────────────
 
+// Exported for unit testing — not part of the public extension API.
+export { DbmlxCompletionProvider };
+
 export function registerLspProviders(
   index: WorkspaceIndex,
   context: vscode.ExtensionContext,
