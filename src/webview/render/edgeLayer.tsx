@@ -1,3 +1,5 @@
+import { useMemo } from 'preact/hooks';
+import { memo } from 'preact/compat';
 import type { QualifiedName, Ref, Schema } from '../../shared/types';
 import { colRowY, estimateSize, tableActualHeight, TABLE_ROW_H } from '../layout/autoLayout';
 import { routeRefs } from './edgeRouter';
@@ -27,49 +29,54 @@ interface EdgeLayerProps {
 
 const GROUP_PREFIX = '__group__:';
 
-export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable, mergeConvergentEdges, colorizeAddRefs }: EdgeLayerProps) {
+function EdgeLayerInner({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable, mergeConvergentEdges, colorizeAddRefs }: EdgeLayerProps) {
   const edgeOffsets = useAppStore((s) => s.edgeOffsets);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
-  const groupByName = new Map<string, GroupSize>();
-  if (groupSizes) for (const g of groupSizes) groupByName.set(g.name, g);
+  const groupByName = useMemo(() => {
+    const m = new Map<string, GroupSize>();
+    if (groupSizes) for (const g of groupSizes) m.set(g.name, g);
+    return m;
+  }, [groupSizes]);
 
-  const bboxOf = (name: QualifiedName): Bbox | undefined => {
-    if (name.startsWith(GROUP_PREFIX)) {
-      const groupName = name.slice(GROUP_PREFIX.length);
-      const g = groupByName.get(groupName);
-      if (!g) return undefined;
-      return { x: g.x, y: g.y, w: g.w, h: g.h };
-    }
-    const pos = positions.get(name);
-    if (!pos) return undefined;
-    const t = tablesByName.get(name);
-    const w = estimateSize(t?.columns.length ?? 0).width;
-    let h: number;
-    if (t) {
-      const fkCols = fkColumnsByTable.get(name) ?? new Set<string>();
+  const routes = useMemo(() => {
+    const bboxOf = (name: QualifiedName): Bbox | undefined => {
+      if (name.startsWith(GROUP_PREFIX)) {
+        const groupName = name.slice(GROUP_PREFIX.length);
+        const g = groupByName.get(groupName);
+        if (!g) return undefined;
+        return { x: g.x, y: g.y, w: g.w, h: g.h };
+      }
+      const pos = positions.get(name);
+      if (!pos) return undefined;
+      const t = tablesByName.get(name);
+      const w = estimateSize(t?.columns.length ?? 0).width;
+      let h: number;
+      if (t) {
+        const fkCols = fkColumnsByTable.get(name) ?? new Set<string>();
+        const visibleCols = showOnlyPkFk ? t.columns.filter((c) => c.pk || fkCols.has(c.name)) : t.columns;
+        h = tableActualHeight({ ...t, columns: visibleCols });
+      } else {
+        h = estimateSize(0).height;
+      }
+      return { x: pos.x, y: pos.y, w, h };
+    };
+
+    const columnY = (tableName: QualifiedName, column: string): number | undefined => {
+      const t = tablesByName.get(tableName);
+      if (!t) return undefined;
+      const fkCols = fkColumnsByTable.get(tableName) ?? new Set<string>();
       const visibleCols = showOnlyPkFk ? t.columns.filter((c) => c.pk || fkCols.has(c.name)) : t.columns;
-      h = tableActualHeight({ ...t, columns: visibleCols });
-    } else {
-      h = estimateSize(0).height;
-    }
-    return { x: pos.x, y: pos.y, w, h };
-  };
+      const idx = visibleCols.findIndex((c) => c.name === column);
+      if (idx < 0) return undefined;
+      const virtualT = { ...t, columns: visibleCols };
+      // For modify columns, point to center of the "after" row (second of the two rows)
+      const isModify = t.columnChanges?.[visibleCols[idx]!.name]?.kind === 'modify';
+      return colRowY(virtualT, idx) + (isModify ? TABLE_ROW_H * 1.5 : TABLE_ROW_H / 2);
+    };
 
-  const columnY = (tableName: QualifiedName, column: string): number | undefined => {
-    const t = tablesByName.get(tableName);
-    if (!t) return undefined;
-    const fkCols = fkColumnsByTable.get(tableName) ?? new Set<string>();
-    const visibleCols = showOnlyPkFk ? t.columns.filter((c) => c.pk || fkCols.has(c.name)) : t.columns;
-    const idx = visibleCols.findIndex((c) => c.name === column);
-    if (idx < 0) return undefined;
-    const virtualT = { ...t, columns: visibleCols };
-    // For modify columns, point to center of the "after" row (second of the two rows)
-    const isModify = t.columnChanges?.[visibleCols[idx]!.name]?.kind === 'modify';
-    return colRowY(virtualT, idx) + (isModify ? TABLE_ROW_H * 1.5 : TABLE_ROW_H / 2);
-  };
-
-  const routes = routeRefs(refs, bboxOf, columnY, (id) => edgeOffsets.get(id), mergeConvergentEdges);
+    return routeRefs(refs, bboxOf, columnY, (id) => edgeOffsets.get(id), mergeConvergentEdges);
+  }, [refs, positions, tablesByName, groupByName, showOnlyPkFk, fkColumnsByTable, edgeOffsets, mergeConvergentEdges]);
 
   const refById = new Map<string, Ref>();
   for (const r of refs) refById.set(r.id, r);
@@ -168,3 +175,5 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
     </svg>
   );
 }
+
+export const EdgeLayer = memo(EdgeLayerInner);

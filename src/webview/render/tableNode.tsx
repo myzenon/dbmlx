@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import { createPortal } from 'preact/compat';
+import { createPortal, memo } from 'preact/compat';
 import type { Column, ColumnChange, Table } from '../../shared/types';
 import type { LodLevel } from './lod';
 import { estimateSize } from '../layout/autoLayout';
@@ -19,7 +19,7 @@ interface TableNodeProps {
   fkColumns?: Set<string>;
 }
 
-export function TableNode({ table, x, y, lod, selected, color, fkColumns }: TableNodeProps) {
+function TableNodeInner({ table, x, y, lod, selected, color, fkColumns }: TableNodeProps) {
   const size = estimateSize(table.columns.length);
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
   const [showIcons, setShowIcons] = useState(false);
@@ -103,6 +103,8 @@ export function TableNode({ table, x, y, lod, selected, color, fkColumns }: Tabl
     </div>
   );
 }
+
+export const TableNode = memo(TableNodeInner);
 
 function TableHeader({ table, configurable, showIcons, headerStyle, changeCount, tableChange, tableFromName }: { table: Table; configurable?: boolean; showIcons?: boolean; headerStyle?: Record<string, string>; changeCount?: number; tableChange?: 'add' | 'drop' | 'modify'; tableFromName?: string }) {
   const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);

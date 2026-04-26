@@ -147,11 +147,11 @@ export function App(_props: AppProps) {
     return tableActualHeight({ ...t, columns: visibleCols });
   };
 
-  const derived = useMemo(() => {
+  // Static: visibility masks and effective refs — no dependency on positions.
+  // Does NOT recompute during drag (only on schema / group-state changes).
+  const derivedStatic = useMemo(() => {
     const hiddenTables = new Set<QualifiedName>(individuallyHidden);
     const collapsedTables = new Set<QualifiedName>();
-    const collapsedNodes: Array<{ name: string; x: number; y: number; w: number; h: number; color: string; count: number }> = [];
-    const containers: Array<{ name: string; x: number; y: number; w: number; h: number; color: string }> = [];
 
     for (const g of schema.groups) {
       const st = groupState[g.name];
@@ -159,11 +159,57 @@ export function App(_props: AppProps) {
         for (const t of g.tables) hiddenTables.add(t);
         continue;
       }
+      if (st?.collapsed) {
+        for (const t of g.tables) collapsedTables.add(t);
+      }
+    }
+
+    const mapEndpoint = (table: QualifiedName): QualifiedName | null => {
+      if (hiddenTables.has(table)) return null;
+      if (collapsedTables.has(table)) {
+        const tbl = schema.tables.find((t) => t.name === table);
+        if (tbl?.groupName) return groupId(tbl.groupName);
+        return null;
+      }
+      return table;
+    };
+
+    const effectiveRefs: Ref[] = [];
+    const seen = new Set<string>();
+    for (const r of schema.refs) {
+      if (r.refChange === 'drop' && !showDropRefs) continue;
+      const srcM = mapEndpoint(r.source.table);
+      const tgtM = mapEndpoint(r.target.table);
+      if (srcM == null || tgtM == null) continue;
+      if (srcM === tgtM) continue;
+      const key = `${srcM}::${r.source.columns.join(',')}|${tgtM}::${r.target.columns.join(',')}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      effectiveRefs.push({
+        ...r,
+        id: key,
+        source: { ...r.source, table: srcM },
+        target: { ...r.target, table: tgtM },
+      });
+    }
+
+    return { hiddenTables, collapsedTables, effectiveRefs };
+  }, [schema, groupState, individuallyHidden, showDropRefs]);
+
+  // Layout: group container bounds and collapsed-group centroids — depends on positions.
+  // Recomputes during drag but is O(groups), not O(all tables + refs).
+  const derivedLayout = useMemo(() => {
+    const containers: Array<{ name: string; x: number; y: number; w: number; h: number; color: string }> = [];
+    const collapsedNodes: Array<{ name: string; x: number; y: number; w: number; h: number; color: string; count: number }> = [];
+
+    for (const g of schema.groups) {
+      const st = groupState[g.name];
+      if (st?.hidden) continue;
       if (!st?.collapsed) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         let n = 0;
         for (const t of g.tables) {
-          if (hiddenTables.has(t)) continue;
+          if (derivedStatic.hiddenTables.has(t)) continue;
           const pos = positions.get(t);
           if (!pos) continue;
           const table = schema.tables.find((x) => x.name === t);
@@ -197,7 +243,6 @@ export function App(_props: AppProps) {
           sumX += pos.x + size.width / 2;
           sumY += pos.y + size.height / 2;
           n++;
-          collapsedTables.add(t);
         }
         if (n > 0) {
           const cx = Math.round(sumX / n - GROUP_NODE_W / 2);
@@ -215,52 +260,23 @@ export function App(_props: AppProps) {
       }
     }
 
-    const mapEndpoint = (table: QualifiedName): QualifiedName | null => {
-      if (hiddenTables.has(table)) return null;
-      if (collapsedTables.has(table)) {
-        const tbl = schema.tables.find((t) => t.name === table);
-        if (tbl?.groupName) return groupId(tbl.groupName);
-        return null;
-      }
-      return table;
-    };
-
-    const effectiveRefs: Ref[] = [];
-    const seen = new Set<string>();
-    for (const r of schema.refs) {
-      if (r.refChange === 'drop' && !showDropRefs) continue;
-      const srcM = mapEndpoint(r.source.table);
-      const tgtM = mapEndpoint(r.target.table);
-      if (srcM == null || tgtM == null) continue;
-      if (srcM === tgtM) continue;
-      const key = `${srcM}::${r.source.columns.join(',')}|${tgtM}::${r.target.columns.join(',')}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      effectiveRefs.push({
-        ...r,
-        id: key,
-        source: { ...r.source, table: srcM },
-        target: { ...r.target, table: tgtM },
-      });
-    }
-
-    return { hiddenTables, collapsedTables, collapsedNodes, containers, effectiveRefs };
-  }, [schema, positions, groupState, individuallyHidden, showOnlyPkFk, fkColumnsByTable, showDropRefs]);
+    return { containers, collapsedNodes };
+  }, [schema, positions, groupState, derivedStatic, showOnlyPkFk, fkColumnsByTable]);
 
   const spatialIndex = useMemo(() => {
     const idx = new SpatialIndex();
     for (const t of schema.tables) {
-      if (derived.hiddenTables.has(t.name) || derived.collapsedTables.has(t.name)) continue;
+      if (derivedStatic.hiddenTables.has(t.name) || derivedStatic.collapsedTables.has(t.name)) continue;
       const pos = positions.get(t.name);
       if (!pos) continue;
       const size = { width: estimateSize(t.columns.length).width, height: getRenderedHeight(t) };
       idx.insert(t.name, { x: pos.x, y: pos.y, w: size.width, h: size.height });
     }
-    for (const g of derived.collapsedNodes) {
+    for (const g of derivedLayout.collapsedNodes) {
       idx.insert(groupId(g.name), { x: g.x, y: g.y, w: g.w, h: g.h });
     }
     return idx;
-  }, [schema, positions, derived, showOnlyPkFk, fkColumnsByTable]);
+  }, [schema, positions, derivedStatic, derivedLayout, showOnlyPkFk, fkColumnsByTable]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const [viewportRect, setViewportRect] = useState({ w: 0, h: 0 });
@@ -452,16 +468,16 @@ export function App(_props: AppProps) {
   const positionsEffective = useMemo(() => {
     const m = new Map<QualifiedName, { x: number; y: number }>();
     for (const [k, v] of positions) m.set(k, v);
-    for (const g of derived.collapsedNodes) m.set(groupId(g.name), { x: g.x, y: g.y });
+    for (const g of derivedLayout.collapsedNodes) m.set(groupId(g.name), { x: g.x, y: g.y });
     return m;
-  }, [positions, derived.collapsedNodes]);
+  }, [positions, derivedLayout.collapsedNodes]);
 
   // World bounding box covering every rendered element — used to size the SVG edge layer
   // so paths are inside its coordinate viewport (more robust than overflow:visible on 0x0 parent).
   const worldBbox = useMemo(() => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const t of schema.tables) {
-      if (derived.hiddenTables.has(t.name) || derived.collapsedTables.has(t.name)) continue;
+      if (derivedStatic.hiddenTables.has(t.name) || derivedStatic.collapsedTables.has(t.name)) continue;
       const pos = positions.get(t.name);
       if (!pos) continue;
       const size = { width: estimateSize(t.columns.length).width, height: getRenderedHeight(t) };
@@ -470,13 +486,13 @@ export function App(_props: AppProps) {
       if (pos.x + size.width > maxX) maxX = pos.x + size.width;
       if (pos.y + size.height > maxY) maxY = pos.y + size.height;
     }
-    for (const g of derived.collapsedNodes) {
+    for (const g of derivedLayout.collapsedNodes) {
       if (g.x < minX) minX = g.x;
       if (g.y < minY) minY = g.y;
       if (g.x + g.w > maxX) maxX = g.x + g.w;
       if (g.y + g.h > maxY) maxY = g.y + g.h;
     }
-    for (const c of derived.containers) {
+    for (const c of derivedLayout.containers) {
       if (c.x < minX) minX = c.x;
       if (c.y < minY) minY = c.y;
       if (c.x + c.w > maxX) maxX = c.x + c.w;
@@ -485,34 +501,40 @@ export function App(_props: AppProps) {
     if (!Number.isFinite(minX)) return { x: 0, y: 0, w: 800, h: 600 };
     const P = 400;
     return { x: Math.round(minX - P), y: Math.round(minY - P), w: Math.round(maxX - minX + P * 2), h: Math.round(maxY - minY + P * 2) };
-  }, [schema, positions, derived, showOnlyPkFk, fkColumnsByTable]);
+  }, [schema, positions, derivedStatic, derivedLayout, showOnlyPkFk, fkColumnsByTable]);
 
   const lod = lodForZoom(viewport.zoom);
   const worldTransform = `translate(${viewport.x}px, ${viewport.y}px) scale(${viewport.zoom})`;
-  const visibleRefs = visibleNames
-    ? derived.effectiveRefs.filter((r) => visibleNames.has(r.source.table) || visibleNames.has(r.target.table))
-    : derived.effectiveRefs;
-
-  const renderedTables = schema.tables.filter(
-    (t) => !derived.hiddenTables.has(t.name) && !derived.collapsedTables.has(t.name),
+  const visibleRefs = useMemo(
+    () => visibleNames
+      ? derivedStatic.effectiveRefs.filter((r) => visibleNames.has(r.source.table) || visibleNames.has(r.target.table))
+      : derivedStatic.effectiveRefs,
+    [visibleNames, derivedStatic.effectiveRefs],
   );
 
-  const visibleTableCount = renderedTables.length + derived.collapsedNodes.length;
-  const totalTableCount = schema.tables.length - derived.hiddenTables.size;
+  const renderedTables = useMemo(
+    () => schema.tables.filter(
+      (t) => !derivedStatic.hiddenTables.has(t.name) && !derivedStatic.collapsedTables.has(t.name),
+    ),
+    [schema, derivedStatic],
+  );
+
+  const visibleTableCount = renderedTables.length + derivedLayout.collapsedNodes.length;
+  const totalTableCount = schema.tables.length - derivedStatic.hiddenTables.size;
 
   return (
     <>
       <div class="ddd-viewport" ref={viewportRef} tabIndex={0}>
         {ready && schema.tables.length > 0 ? (
           <div class="ddd-world" style={{ transform: worldTransform }}>
-            {showGroupBoundary ? derived.containers.map((c) => (
+            {showGroupBoundary ? derivedLayout.containers.map((c) => (
               <GroupContainer key={`container:${c.name}`} name={c.name} x={c.x} y={c.y} w={c.w} h={c.h} color={c.color} />
             )) : null}
             <EdgeLayer
               refs={visibleRefs}
               positions={positionsEffective}
               tablesByName={tablesByName}
-              groupSizes={derived.collapsedNodes}
+              groupSizes={derivedLayout.collapsedNodes}
               worldBbox={worldBbox}
               showOnlyPkFk={showOnlyPkFk}
               fkColumnsByTable={fkColumnsByTable}
@@ -538,7 +560,7 @@ export function App(_props: AppProps) {
                 />
               );
             })}
-            {derived.collapsedNodes.map((g) => {
+            {derivedLayout.collapsedNodes.map((g) => {
               if (visibleNames && !visibleNames.has(groupId(g.name))) return null;
               return (
                 <CollapsedGroupNode
@@ -583,7 +605,7 @@ export function App(_props: AppProps) {
       ) : null}
       {ready ? (
         <div class="ddd-statusbar">
-          {visibleNames ? visibleNames.size : visibleTableCount}/{totalTableCount} visible · {derived.effectiveRefs.length} refs · zoom {Math.round(viewport.zoom * 100)}% · LOD {lod}
+          {visibleNames ? visibleNames.size : visibleTableCount}/{totalTableCount} visible · {derivedStatic.effectiveRefs.length} refs · zoom {Math.round(viewport.zoom * 100)}% · LOD {lod}
           {selection.size > 0 ? ` · ${selection.size} selected` : ''}
         </div>
       ) : null}

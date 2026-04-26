@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.18] - 2026-04-26
+
+### Performance
+- **Split render derived memo**: separated the main `derived` useMemo into `derivedStatic` (hiddenTables, collapsedTables, effectiveRefs — no positions dependency) and `derivedLayout` (containers, collapsedNodes — positions dependency). During drag, the O(refs) effective-ref computation no longer runs 60×/sec.
+- **`memo()` on TableNode and EdgeLayer**: non-dragged tables skip re-render during drag; EdgeLayer skips re-render during selection changes when refs/positions are stable.
+- **Memoized edge routing**: `routeRefs()` moved into a `useMemo` inside EdgeLayer — viewport pan no longer triggers re-routing; only actual position or ref changes do.
+- **Memoized visibleRefs and renderedTables**: stable array references prevent unnecessary downstream re-renders.
+
+### Testing
+- **195 unit tests** covering parser, layoutStore, LSP completion provider, and edge router — full regression safety for all non-visual code paths.
+
 ## [0.1.17] - 2026-04-25
 
 ### Added
