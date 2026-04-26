@@ -10,6 +10,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `[add]` — column or whole table is new (green + `+NEW` badge)
 - `[drop]` — column or whole table removed (red strikethrough + `DROP` badge)
 - `[modify: key=value, ...]` — column changed; keys: `name`, `type`, `default`, `pk`, `not_null`, `unique`, `increment` (all store the **old** value)
+- `Ref: a.col > b.col [add]` / `[drop]` — top-level ref is new/dropped (shown as green/red line)
+- `col type [add ref: > target.col]` — inline ref is new; `[drop ref: > target.col]` — inline ref dropped
+  - `add`/`drop` must be a **prefix of the ref item** (no comma between): `[pk, add ref: > t.id]`
+  - Standalone `[add]` or trailing `, add` after a ref remain column-level (backward compat)
+  - Ref migration (drop old + add new): `[add ref: > new.id, drop ref: > old.id]`
 
 `[add]`/`[drop]` on the `Table` declaration line marks the whole table.
 

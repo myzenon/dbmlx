@@ -91,6 +91,28 @@ Table orders {
 
 **Completions**: Typing `Ref "name": ` triggers schema-name completions automatically. Picking a schema immediately suggests tables; picking a table suggests columns; picking a column suggests operators; picking an operator suggests the right-side schema — the full chain triggers without `Ctrl+Space`.
 
+### Ref migration annotations
+
+Mark a ref as being added or dropped in a migration. See §8 for full details.
+
+```dbmlx
+// Top-level ref — add [add] or [drop] after the endpoint pair
+Ref: orders.user_id > users.id [add]     // new FK — shown as green line (when enabled)
+Ref: orders.legacy_id > old.id [drop]    // FK being removed — shown as red dashed line
+
+// Inline ref — prefix the ref: clause with add or drop (no comma between)
+Table orders {
+  user_id      int  [add ref: > users.id]       // new FK
+  old_ref_id   int  [drop ref: > legacy.id]     // FK being removed
+  domain_id    int  [pk, ref: > domains.id, add] // ← "add" here is column-level (standalone item)
+
+  // Ref migration: drop old FK, add new one — both in a single bracket
+  tenant_id    int  [add ref: > tenants.id, drop ref: > old_tenants.id]
+}
+```
+
+**Rule for inline refs**: `add ref:` / `drop ref:` (keyword + space + `ref:`, no comma between) is a ref-level annotation. A standalone `add` or `drop` item elsewhere in the bracket remains a column-level annotation — existing code is unaffected.
+
 ---
 
 ## 3. Enums
@@ -397,6 +419,8 @@ The diagram stores table positions, viewport state, group state, and edge offset
 - `showGroupBoundary` — show group boundary boxes; omitted when `true` (default on)
 - `showCardinalityLabels` — show 1/N labels on edges; omitted when `true` (default on)
 - `mergeConvergentEdges` — merge FK lines sharing an endpoint into a trunk; omitted when `true` (default on)
+- `showDropRefs` — show `[drop]`-annotated refs as red dashed lines; omitted when `false` (default off)
+- `colorizeAddRefs` — color `[add]`-annotated refs green; omitted when `false` (default off)
 
 **`tables`** — keyed by qualified name `schema.table`:
 - `x`, `y` — integer pixel coordinates

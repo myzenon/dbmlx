@@ -26,11 +26,11 @@ export function stripDbmlxExtensions(source: string): string {
 
 export function parseDbmlx(source: string): { schema: Schema; error: null } | { schema: null; error: ParseError } {
   const { stripped: noViews, views } = extractDiagramViews(source);
-  const { stripped, changes: migrationChanges, tableChanges, tableFromNames, indexChanges } = extractMigrationChanges(noViews);
+  const { stripped, changes: migrationChanges, tableChanges, tableFromNames, indexChanges, inlineRefChanges } = extractMigrationChanges(noViews);
   try {
     const db = Parser.parse(stripped, 'dbmlv2');
     const exported = db.export() as unknown as ExportedDatabase;
-    const schema = mapExportedToSchema(exported, migrationChanges, tableChanges, tableFromNames, indexChanges);
+    const schema = mapExportedToSchema(exported, migrationChanges, tableChanges, tableFromNames, indexChanges, inlineRefChanges);
     schema.views = views;
     return { schema, error: null };
   } catch (err) {
@@ -83,11 +83,13 @@ function extractMigrationChanges(source: string): {
   tableChanges: Map<string, 'add' | 'drop' | 'modify'>;
   tableFromNames: Map<string, string>;
   indexChanges: Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>;
+  inlineRefChanges: Map<string, 'add' | 'drop'>;
 } {
   const changes = new Map<string, Map<string, ColumnChange>>();
   const tableChanges = new Map<string, 'add' | 'drop' | 'modify'>();
   const tableFromNames = new Map<string, string>();
   const indexChanges = new Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>();
+  const inlineRefChanges = new Map<string, 'add' | 'drop'>();
   const lines = source.split('\n');
   const outLines: string[] = [];
 
@@ -209,13 +211,40 @@ function extractMigrationChanges(source: string): {
       }).trimEnd();
     }
     if (inTable && braceDepth === tableBodyDepth) {
-      const tableChanges = changes.get(currentTableRawName)!;
+      const tableColChanges = changes.get(currentTableRawName)!;
 
       const colMatch = COL_NAME_RE.exec(line);
       const colName = colMatch ? (colMatch[1] ?? colMatch[2]) : undefined;
       if (colName) {
-        // [{WHATEVER_RULES}modify: name="x", type="y"]
-        const modifyMatch = MODIFY_RE.exec(line);
+        // Step 1: Strip ref-level annotations from bracket(s).
+        // Syntax: "add ref: > target.col" or "drop ref: > target.col" as a SINGLE comma item.
+        // Standalone "add"/"drop" items are column-level and are NOT touched here.
+        // This preserves existing patterns like [pk, ref: - target.id, add] (column add).
+        processedLine = processedLine.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
+          const items = inner.split(',').map((s: string) => s.trim()).filter(Boolean);
+          let changed = false;
+          const newItems = items.map((item) => {
+            const m = /^(add|drop)\s+(ref:\s*(?:[<>-]|<>)\s*[\w"`.]+(?:\.[\w"`.]+)*(?:\s*\.\s*[\w"`.]+)*)/i.exec(item);
+            if (!m) return item;
+            const kind = m[1]!.toLowerCase() as 'add' | 'drop';
+            const refPart = m[2]!;
+            const targetMatch = /ref:\s*(?:[<>-]|<>)\s*([\w"`.]+(?:\.[\w"`.]+)*)/i.exec(refPart);
+            if (targetMatch) {
+              const pathParts = targetMatch[1]!.replace(/["'`]/g, '').split('.');
+              const targetCol = pathParts[pathParts.length - 1]!;
+              const targetTable = pathParts[pathParts.length - 2] ?? pathParts[0]!;
+              inlineRefChanges.set(`${currentTableRawName}\t${colName}\t${targetTable}\t${targetCol}`, kind);
+            }
+            changed = true;
+            return refPart; // strip the "add "/"drop " prefix, keep the ref: clause
+          });
+          if (!changed) return _m;
+          const cleaned = newItems.join(', ');
+          return cleaned ? `[${cleaned}]` : '';
+        });
+
+        // Step 2: Column-level annotation checks — use processedLine (inline ref annotations already stripped)
+        const modifyMatch = MODIFY_RE.exec(processedLine);
         if (modifyMatch) {
           const body = modifyMatch[1]!;
           const fromName = /\bname\s*=\s*"([^"]*)"/.exec(body)?.[1];
@@ -226,9 +255,8 @@ function extractMigrationChanges(source: string): {
           const fromUnique = parseBool('unique');
           const fromDefault = /\bdefault\s*=\s*"([^"]*)"/.exec(body)?.[1];
           const fromIncrement = parseBool('increment');
-          tableChanges.set(colName, { kind: 'modify', fromName, fromType, fromPk, fromNotNull, fromUnique, fromDefault, fromIncrement });
-          // Strip modify: and all its key=value pairs (quoted strings or booleans), preserving other settings
-          processedLine = line.replace(/\[([^\]]*)\]/, (_m, inner: string) => {
+          tableColChanges.set(colName, { kind: 'modify', fromName, fromType, fromPk, fromNotNull, fromUnique, fromDefault, fromIncrement });
+          processedLine = processedLine.replace(/\[([^\]]*)\]/, (_m, inner: string) => {
             const KV = /\w+\s*=\s*(?:"[^"]*"|true|false)/;
             const NEXT_KV = /(?=\w+\s*=\s*(?:"|true|false))/;
             const cleaned = inner
@@ -243,10 +271,10 @@ function extractMigrationChanges(source: string): {
         }
 
         // [add] — strip from settings, keep column for @dbml/core
-        const hasAdd = /\[[^\]]*\badd\b[^\]]*\]/i.test(line);
+        const hasAdd = /\[[^\]]*\badd\b[^\]]*\]/i.test(processedLine);
         if (hasAdd) {
-          tableChanges.set(colName, { kind: 'add' });
-          processedLine = line.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
+          tableColChanges.set(colName, { kind: 'add' });
+          processedLine = processedLine.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
             if (!/\badd\b/i.test(inner)) return _m;
             const rest = inner.split(',').map((s: string) => s.trim()).filter((s: string) => !/^add$/i.test(s)).join(', ');
             return rest ? `[${rest}]` : '';
@@ -256,14 +284,20 @@ function extractMigrationChanges(source: string): {
         }
 
         // [drop] — strip from settings, keep column for @dbml/core
-        const hasDrop = /\[[^\]]*\bdrop\b[^\]]*\]/i.test(line);
+        const hasDrop = /\[[^\]]*\bdrop\b[^\]]*\]/i.test(processedLine);
         if (hasDrop) {
-          tableChanges.set(colName, { kind: 'drop' });
-          processedLine = line.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
+          tableColChanges.set(colName, { kind: 'drop' });
+          processedLine = processedLine.replace(/\[([^\]]*)\]/g, (_m, inner: string) => {
             if (!/\bdrop\b/i.test(inner)) return _m;
             const rest = inner.split(',').map((s: string) => s.trim()).filter((s: string) => !/^drop$/i.test(s)).join(', ');
             return rest ? `[${rest}]` : '';
           }).trimEnd();
+          outLines.push(processedLine);
+          continue;
+        }
+
+        // Line had only inline ref annotation(s) stripped — still needs to be pushed
+        if (processedLine !== line) {
           outLines.push(processedLine);
           continue;
         }
@@ -273,7 +307,7 @@ function extractMigrationChanges(source: string): {
     outLines.push(processedLine);
   }
 
-  return { stripped: outLines.join('\n'), changes, tableChanges, tableFromNames, indexChanges };
+  return { stripped: outLines.join('\n'), changes, tableChanges, tableFromNames, indexChanges, inlineRefChanges };
 }
 
 function toParseError(err: unknown): ParseError {
@@ -373,7 +407,7 @@ function qualify(schemaName: string | null | undefined, tableName: string): Qual
   return `${s && s.length > 0 ? s : 'public'}.${t}`;
 }
 
-function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string, Map<string, ColumnChange>>, tableAnnotations?: Map<string, 'add' | 'drop' | 'modify'>, tableFromNames?: Map<string, string>, tableIndexChanges?: Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>): Schema {
+function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string, Map<string, ColumnChange>>, tableAnnotations?: Map<string, 'add' | 'drop' | 'modify'>, tableFromNames?: Map<string, string>, tableIndexChanges?: Map<string, Array<{ columns: string[]; kind: 'add' | 'drop' }>>, inlineRefChanges?: Map<string, 'add' | 'drop'>): Schema {
   const tables: Table[] = [];
   const refs: Ref[] = [];
   const groups: TableGroup[] = [];
@@ -437,7 +471,7 @@ function mapExportedToSchema(db: ExportedDatabase, migrationChanges: Map<string,
     }
 
     for (const r of s.refs ?? []) {
-      const mapped = mapRef(r, schemaName);
+      const mapped = mapRef(r, schemaName, inlineRefChanges);
       if (mapped) refs.push(mapped);
     }
   }
@@ -471,7 +505,7 @@ function typeName(t: unknown): string {
   return 'unknown';
 }
 
-function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
+function mapRef(r: ExportedRef, defaultSchemaName: string, inlineRefChanges?: Map<string, 'add' | 'drop'>): Ref | null {
   if (!r.endpoints || r.endpoints.length !== 2) return null;
   const [a, b] = r.endpoints;
   if (!a || !b) return null;
@@ -490,6 +524,16 @@ function mapRef(r: ExportedRef, defaultSchemaName: string): Ref | null {
   let refChange: 'add' | 'drop' | undefined;
   if (name?.startsWith('DBMLXADD_')) { refChange = 'add'; name = name.slice(9) || null; }
   else if (name?.startsWith('DBMLXDROP_')) { refChange = 'drop'; name = name.slice(10) || null; }
+
+  // Match inline ref [add]/[drop] annotations using unqualified endpoint names.
+  // @dbml/core may flip source/target for inline refs, so we try both orderings.
+  if (!refChange && inlineRefChanges) {
+    const aT = unquote(a.tableName); const aC = unquote(a.fieldNames[0] ?? '');
+    const bT = unquote(b.tableName); const bC = unquote(b.fieldNames[0] ?? '');
+    refChange = inlineRefChanges.get(`${aT}\t${aC}\t${bT}\t${bC}`)
+             ?? inlineRefChanges.get(`${bT}\t${bC}\t${aT}\t${aC}`);
+  }
+
   return { id, source, target, name, ...(refChange ? { refChange } : {}) };
 }
 

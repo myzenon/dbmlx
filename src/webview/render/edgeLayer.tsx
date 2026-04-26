@@ -22,11 +22,12 @@ interface EdgeLayerProps {
   showOnlyPkFk: boolean;
   fkColumnsByTable: Map<QualifiedName, Set<string>>;
   mergeConvergentEdges: boolean;
+  colorizeAddRefs: boolean;
 }
 
 const GROUP_PREFIX = '__group__:';
 
-export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable, mergeConvergentEdges }: EdgeLayerProps) {
+export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox, showOnlyPkFk, fkColumnsByTable, mergeConvergentEdges, colorizeAddRefs }: EdgeLayerProps) {
   const edgeOffsets = useAppStore((s) => s.edgeOffsets);
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
 
@@ -137,7 +138,7 @@ export function EdgeLayer({ refs, positions, tablesByName, groupSizes, worldBbox
 
         const isAddRef = ref?.refChange === 'add';
         const isDropRef = ref?.refChange === 'drop';
-        const grpClass = isAddRef ? 'ddd-edge-grp ddd-edge-grp--add' : isDropRef ? 'ddd-edge-grp ddd-edge-grp--drop' : 'ddd-edge-grp';
+        const grpClass = (isAddRef && colorizeAddRefs) ? 'ddd-edge-grp ddd-edge-grp--add' : isDropRef ? 'ddd-edge-grp ddd-edge-grp--drop' : 'ddd-edge-grp';
         return (
           <g key={r.id} class={grpClass}>
             <path

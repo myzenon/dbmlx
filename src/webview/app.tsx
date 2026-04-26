@@ -66,6 +66,7 @@ export function App(_props: AppProps) {
   const showCardinalityLabels = useAppStore((s) => s.showCardinalityLabels);
   const mergeConvergentEdges = useAppStore((s) => s.mergeConvergentEdges);
   const showDropRefs = useAppStore((s) => s.showDropRefs);
+  const colorizeAddRefs = useAppStore((s) => s.colorizeAddRefs);
 
   const tablesByName = useMemo(() => {
     const m = new Map<QualifiedName, Table>();
@@ -101,10 +102,11 @@ export function App(_props: AppProps) {
           showCardinalityLabels: showCardinalityLabels === false ? false : undefined,
           mergeConvergentEdges: mergeConvergentEdges === false ? false : undefined,
           showDropRefs: showDropRefs || undefined,
+          colorizeAddRefs: colorizeAddRefs || undefined,
         },
       },
     });
-  }, [ready, showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges, showDropRefs]);
+  }, [ready, showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges, showDropRefs, colorizeAddRefs]);
 
   useEffect(() => {
     if (!ready) return;
@@ -515,6 +517,7 @@ export function App(_props: AppProps) {
               showOnlyPkFk={showOnlyPkFk}
               fkColumnsByTable={fkColumnsByTable}
               mergeConvergentEdges={mergeConvergentEdges}
+              colorizeAddRefs={colorizeAddRefs}
             />
             {renderedTables.map((t) => {
               if (visibleNames && !visibleNames.has(t.name)) return null;

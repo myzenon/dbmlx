@@ -71,7 +71,7 @@ function esc(s: string): string {
 
 export function generateSvg(state: AppState): string {
   const { schema, positions, hiddenTables, tableColors, groups: grpState, theme, edgeOffsets,
-    showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges, showDropRefs } = state;
+    showOnlyPkFk, showGroupBoundary, showCardinalityLabels, mergeConvergentEdges, showDropRefs, colorizeAddRefs } = state;
 
   // Build fkColumnsByTable from refs (mirrors app.tsx useMemo)
   const fkColsByTable = new Map<QualifiedName, Set<string>>();
@@ -248,7 +248,7 @@ export function generateSvg(state: AppState): string {
     const activeStartMarker = suppressStart ? '' : ` marker-start="${startMarker}"`;
     const activeEndMarker   = suppressEnd   ? '' : ` marker-end="${endMarker}"`;
     const isDropRef = ref?.refChange === 'drop';
-    const refStroke = ref?.refChange === 'add' ? migAdd : isDropRef ? migDrop : edgeLine;
+    const refStroke = (ref?.refChange === 'add' && colorizeAddRefs) ? migAdd : isDropRef ? migDrop : edgeLine;
     const dropAttrs = isDropRef ? ' stroke-dasharray="5 4" opacity="0.55"' : '';
     L.push(`<path d="${r.d}" fill="none" stroke="${refStroke}" stroke-width="1.5" stroke-linecap="round"${activeStartMarker}${activeEndMarker}${dropAttrs}/>`);
     if (r.convergeJunction && !isConvergeDup) {

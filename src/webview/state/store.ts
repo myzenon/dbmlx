@@ -36,6 +36,8 @@ export interface AppState {
   mergeConvergentEdges: boolean;
   /** Ephemeral: show [drop]-annotated ref lines as red dashed edges. Default false. */
   showDropRefs: boolean;
+  /** Ephemeral: colorize [add]-annotated ref lines green. Default false. */
+  colorizeAddRefs: boolean;
   /** Active DiagramView name, or null = show all tables. Ephemeral, not persisted. */
   activeView: string | null;
 }
@@ -60,6 +62,7 @@ export interface AppActions {
   setShowCardinalityLabels(v: boolean): void;
   setMergeConvergentEdges(v: boolean): void;
   setShowDropRefs(v: boolean): void;
+  setColorizeAddRefs(v: boolean): void;
   resetPositions(): void;
   setActiveView(name: string | null): void;
 }
@@ -83,6 +86,7 @@ const initial: AppState = {
   showCardinalityLabels: true,
   mergeConvergentEdges: true,
   showDropRefs: false,
+  colorizeAddRefs: false,
   activeView: null,
 };
 
@@ -114,6 +118,7 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
       showCardinalityLabels: vs.showCardinalityLabels ?? true,
       mergeConvergentEdges: vs.mergeConvergentEdges ?? true,
       showDropRefs: vs.showDropRefs ?? false,
+      colorizeAddRefs: vs.colorizeAddRefs ?? false,
     });
   },
   setTablePos(name, x, y) {
@@ -197,6 +202,9 @@ export const store = createStore<AppState & AppActions>((set, _get) => ({
   },
   setShowDropRefs(v: boolean) {
     set({ showDropRefs: v });
+  },
+  setColorizeAddRefs(v: boolean) {
+    set({ colorizeAddRefs: v });
   },
   resetPositions() {
     set({ positions: new Map() });

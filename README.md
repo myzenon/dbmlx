@@ -73,6 +73,19 @@ Table orders {
 - `[drop]` — rendered with a red strikethrough (column) or red border + `DROP` badge (table)
 - `[modify: ...]` — two-row display: original (strikethrough) → new (amber). All keys are optional.
 
+Refs can be annotated too — top-level with `[add]`/`[drop]` after the endpoint pair, inline with `add ref:` / `drop ref:` as a prefixed item:
+
+```dbmlx
+Ref: orders.user_id > users.id [add]            // new FK — shown as green line (toggle on)
+Ref: orders.old_id > legacy.id [drop]           // removed FK — shown as red dashed line
+
+Table orders {
+  user_id    int  [add ref: > users.id]          // new inline FK
+  tenant_id  int  [add ref: > tenants.id, drop ref: > old_tenants.id]  // ref migration
+  domain_id  int  [pk, ref: > domains.id, add]  // "add" here = column-level (standalone item)
+}
+```
+
 `[add]`, `[drop]`, and `[modify: name="old"]` work on the `Table` declaration line too:
 
 ```dbmlx

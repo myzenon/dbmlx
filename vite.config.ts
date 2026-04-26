@@ -1,8 +1,15 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
 
 export default defineConfig({
   root: resolve(__dirname, 'src/webview'),
+  test: {
+    include: [
+      resolve(__dirname, 'src/webview/**/*.test.ts'),
+      resolve(__dirname, 'src/extension/**/*.test.ts'),
+    ],
+    environment: 'node',
+  },
   resolve: {
     alias: {
       react: 'preact/compat',

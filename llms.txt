@@ -103,6 +103,31 @@ Table audit_log [add] { ... }   // new table — green border + +NEW badge
 Table old_cache [drop] { ... }  // removed table — red border + DROP badge
 ```
 
+### Ref-level annotations
+
+Mark a ref as being added or dropped in a migration:
+
+```dbmlx
+// Top-level ref
+Ref: orders.user_id > users.id [add]     // new FK
+Ref: orders.legacy_id > old.id [drop]    // FK being removed
+
+// Inline ref — prefix the ref: clause with add or drop (no comma between them)
+Table orders {
+  user_id    int  [add ref: > users.id]              // new FK
+  old_id     int  [drop ref: > legacy.id]            // FK being removed
+  col        int  [pk, ref: > domains.id, add]       // "add" here = column-level (standalone item)
+  tenant_id  int  [add ref: > tenants.id, drop ref: > old_tenants.id]  // ref migration
+}
+```
+
+Rule: `add ref:` / `drop ref:` (no comma between keyword and `ref:`) = ref annotation.
+A standalone `add`/`drop` item elsewhere in the bracket = column annotation (backward compatible).
+
+Ref annotations are visualized when the corresponding view toggle is enabled:
+- `[drop]` refs: shown as red dashed lines ("Dropped refs" toggle, default off)
+- `[add]` refs: shown as green lines ("Added ref color" toggle, default off)
+
 `modify:` keys:
 
 | Key | Format | Records |

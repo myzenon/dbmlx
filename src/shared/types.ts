@@ -126,6 +126,7 @@ export interface ViewSettings {
   showCardinalityLabels?: boolean;
   mergeConvergentEdges?: boolean;
   showDropRefs?: boolean;
+  colorizeAddRefs?: boolean;
 }
 
 export interface Layout {
