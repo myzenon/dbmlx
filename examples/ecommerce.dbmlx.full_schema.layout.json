@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "viewport": { "x": 48, "y": 218, "zoom": 0.463 },
+  "tables": {
+    "public.categories": { "x": 0, "y": 508 },
+    "public.invoices": { "x": 0, "y": 244 },
+    "public.order_items": { "x": 0, "y": 752 },
+    "public.orders": { "x": 272, "y": 752 },
+    "public.payment_methods": { "x": 272, "y": 244 },
+    "public.payments": { "x": 544, "y": 244 },
+    "public.product_images": { "x": 272, "y": 508 },
+    "public.product_variants": { "x": 544, "y": 508 },
+    "public.products": { "x": 816, "y": 508 },
+    "public.refunds": { "x": 816, "y": 244 },
+    "public.roles": { "x": 0, "y": 0 },
+    "public.sessions": { "x": 272, "y": 0 },
+    "public.shipments": { "x": 544, "y": 752 },
+    "public.user_roles": { "x": 544, "y": 0 },
+    "public.users": { "x": 816, "y": 0 }
+  },
+  "groups": {
+  },
+  "edges": {}
+}

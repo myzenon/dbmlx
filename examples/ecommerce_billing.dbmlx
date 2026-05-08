@@ -1,0 +1,62 @@
+// Billing submodule — included by ecommerce.dbmlx
+// Open this file independently to get a focused billing diagram.
+
+TableGroup billing {
+  invoices
+  payments
+  payment_methods
+  refunds
+}
+
+Table payment_methods [headercolor: #c67c4f] {
+  id          bigint       [pk, increment]
+  user_id     bigint       [not null, ref: > users.id]
+  type        varchar(30)  [not null, note: 'card | paypal | bank_transfer']
+  last_four   char(4)
+  provider    varchar(50)
+  is_default  boolean      [not null, default: false]
+  created_at  timestamp    [not null, default: `now()`]
+}
+
+Table invoices [headercolor: #c67c4f] {
+  id           bigint         [pk, increment]
+  user_id      bigint         [not null, ref: > users.id]
+  subtotal     decimal(10,2)  [not null]
+  tax          decimal(10,2)  [not null, default: 0]
+  total        decimal(10,2)  [not null]
+  currency     char(3)        [not null, default: 'USD']
+  issued_at    timestamp      [not null, default: `now()`]
+  due_at       timestamp
+  paid_at      timestamp
+}
+
+Table payments [headercolor: #c67c4f] {
+  id                 bigint           [pk, increment]
+  invoice_id         bigint           [not null, ref: > invoices.id]
+  payment_method_id  bigint           [null, ref: > payment_methods.id]
+  amount             decimal(10,2)    [not null]
+  status             payment_status   [not null]
+  provider_ref       varchar(120)
+  paid_at            timestamp
+
+  indexes {
+    invoice_id
+    status
+  }
+}
+
+Table refunds {
+  id          bigint         [pk, increment]
+  payment_id  bigint         [not null, ref: > payments.id]
+  amount      decimal(10,2)  [not null]
+  reason      text
+  created_at  timestamp      [not null, default: `now()`]
+}
+
+Enum payment_status {
+  pending
+  authorised
+  captured
+  failed     [note: 'terminal']
+  refunded   [note: 'terminal']
+}

@@ -23,7 +23,7 @@
 ### Table
 
 ```dbmlx
-Table schema.table_name [headercolor: "#hex"] {
+Table schema.table_name [headercolor: #rrggbb] {
   column_name  type  [settings]
   ...
 
@@ -37,6 +37,8 @@ Table schema.table_name [headercolor: "#hex"] {
 ```
 
 **Schema prefix is optional.** `Table users` is equivalent to `Table public.users`.
+
+**`headercolor`** takes a bare hex literal — no quotes: `[headercolor: #4f86c6]`. The quoted form `"#..."` is a parse error.
 
 ### Column settings
 
@@ -235,6 +237,7 @@ DiagramView everything {
 - Views are selected from the diagram view switcher in the toolbar.
 - Each view has its own layout sidecar file (see §9).
 - Switching views loads a separate layout file automatically.
+- The **Table Groups panel** is also filtered by the active view — groups with no in-scope tables are hidden, and table lists inside each group show only the view's tables.
 
 ---
 

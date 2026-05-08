@@ -80,6 +80,10 @@ Two isolated runtimes communicating via `postMessage` (types in `src/shared/type
 
 `TableRow` in `groupPanel.tsx` — clicking the focus icon opens an inline `FocusMenu` (fixed-positioned popup, click-outside / Esc to close). Two items: *Focus in diagram* (`focusTable(name)`) and *Focus in code* (`postToHost({ type: 'command:reveal' })` — same path the in-diagram go-to-file icon uses). Clicking the table name itself still single-clicks to focus the diagram.
 
+### DiagramView → Group panel sync
+
+`app.tsx` computes `viewAllowed: Set<string> | null` (null = no active view) from `rawSchema` + `activeView`. This is passed to `<GroupPanel viewAllowed={viewAllowed}>`. `GroupPanel` and `GroupRow` use it to: hide groups with zero in-scope tables, show only in-scope tables within each group's list, and reflect the scoped count in the group badge. `filteredUngrouped` also applies the same filter. The underlying store schema is unchanged — view filtering is purely presentational.
+
 ### Ref ↔ inline ref Code Actions
 
 Two providers in `lspProviders.ts` offer `RefactorRewrite` actions:

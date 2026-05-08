@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.3] - 2026-05-08
+
+### Added
+- **Example schemas**: `examples/ecommerce.dbmlx` (full e-commerce schema with TableGroups, `!include`, enums, DiagramViews) and `examples/migration_demo.dbmlx` (showcase of all diff annotations) — open either file and run *DBMLX: Open Diagram* to explore the extension's features.
+
+### Fixed
+- **DiagramView syncs Table Groups panel**: switching to a named `DiagramView` now also filters the Table Groups panel — groups with no in-scope tables are hidden, and table lists within each group show only the view's tables. Previously the panel always showed the full schema regardless of the active view.
+- **`headercolor` syntax**: documented bare hex literal form (`#rrggbb`) — the quoted form (`"#rrggbb"`) was incorrect and caused a parse error.
+- **Test mock**: added missing `getEnumNames` stub to `lspProviders.test.ts` mock index (all 200 tests pass).
+
 ## [0.2.2] - 2026-05-08
 
 ### Added

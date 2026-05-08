@@ -126,6 +126,7 @@ function makeIndex(tables: Table[] = []) {
     getVisibleTableNames: (_uri: unknown): QualifiedName[] => [...byName.keys()] as QualifiedName[],
     getSchemaNames: (_uri: unknown): string[] => [...new Set(tables.map((t) => t.schemaName))],
     getGroupNames: (_uri: unknown): string[] => [],
+    getEnumNames: (_uri: unknown): string[] => [],
     getTablesInFile: (_uri: unknown): Array<{ name: QualifiedName; line: number }> => [],
     getTableLocation: (_qn: string) => undefined,
     getColumnLocation: (_qn: string, _col: string) => undefined,

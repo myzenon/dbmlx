@@ -36,25 +36,28 @@ export function App(_props: AppProps) {
   const activeView = useAppStore((s) => s.activeView);
   const parseError = useAppStore((s) => s.parseError);
 
-  // When a view is active, filter tables to only those included by the view.
-  const schema = useMemo(() => {
-    if (!activeView) return rawSchema;
+  // Set of table qualified names allowed by the active DiagramView; null = no view filter.
+  const viewAllowed = useMemo<Set<string> | null>(() => {
+    if (!activeView) return null;
     const view = rawSchema.views.find((v) => v.name === activeView);
-    if (!view) return rawSchema;
-    // Collect the set of allowed qualified names (union of Tables + TableGroups + Schemas filters)
+    if (!view) return null;
     const allowed = new Set<string>();
     for (const t of rawSchema.tables) {
-      // null = axis not specified (exclude); [] = wildcard *; [...names] = specific match
       const tableMatch = view.tables === null ? false : (view.tables.length === 0 || view.tables.includes(t.tableName) || view.tables.includes(t.name));
       const groupMatch = view.tableGroups === null ? false : (view.tableGroups.length === 0 || (t.groupName != null && view.tableGroups.includes(t.groupName)));
       const schemaMatch = view.schemas === null ? false : (view.schemas.length === 0 || view.schemas.includes(t.schemaName));
       if (tableMatch || groupMatch || schemaMatch) allowed.add(t.name);
     }
-    // If ALL three axes are null (empty DiagramView {}), show nothing.
-    const filteredTables = rawSchema.tables.filter((t) => allowed.has(t.name));
-    const filteredRefs = rawSchema.refs.filter((r) => allowed.has(r.source.table) && allowed.has(r.target.table));
-    return { ...rawSchema, tables: filteredTables, refs: filteredRefs };
+    return allowed;
   }, [rawSchema, activeView]);
+
+  // When a view is active, filter tables to only those included by the view.
+  const schema = useMemo(() => {
+    if (!viewAllowed) return rawSchema;
+    const filteredTables = rawSchema.tables.filter((t) => viewAllowed.has(t.name));
+    const filteredRefs = rawSchema.refs.filter((r) => viewAllowed.has(r.source.table) && viewAllowed.has(r.target.table));
+    return { ...rawSchema, tables: filteredTables, refs: filteredRefs };
+  }, [rawSchema, viewAllowed]);
   const positions = useAppStore((s) => s.positions);
   const viewport = useAppStore((s) => s.viewport);
   const ready = useAppStore((s) => s.ready);
@@ -637,7 +640,7 @@ export function App(_props: AppProps) {
           <div class="ddd-empty">empty DBML — define a Table to see it here.</div>
         ) : null}
         {ready ? <ViewPanel /> : null}
-        {ready ? <GroupPanel /> : null}
+        {ready ? <GroupPanel viewAllowed={viewAllowed} /> : null}
         {ready ? <ZoomButtons /> : null}
         {ready ? <ActionsPanel /> : null}
       </div>

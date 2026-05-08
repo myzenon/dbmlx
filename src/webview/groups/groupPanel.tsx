@@ -20,7 +20,7 @@ import { postToHost } from '../vscode';
 
 type AnnotationFilter = 'add' | 'drop' | 'modified';
 
-export function GroupPanel() {
+export function GroupPanel({ viewAllowed }: { viewAllowed: Set<string> | null }) {
   const groups = useAppStore((s) => s.schema.groups);
   const allTables = useAppStore((s) => s.schema.tables);
   const allRefs = useAppStore((s) => s.schema.refs);
@@ -31,8 +31,8 @@ export function GroupPanel() {
   const [annFilters, setAnnFilters] = useState<Set<AnnotationFilter>>(new Set());
 
   const ungroupedTables = useMemo(
-    () => allTables.filter((t) => t.groupName === null).map((t) => t.name),
-    [allTables],
+    () => allTables.filter((t) => t.groupName === null && (!viewAllowed || viewAllowed.has(t.name))).map((t) => t.name),
+    [allTables, viewAllowed],
   );
 
   // Set of tables that have at least one ref-level change attributed to them
@@ -86,14 +86,15 @@ export function GroupPanel() {
   const lcQuery = query.trim().toLowerCase();
   const filtered = useMemo(() => {
     return groups.filter((g) => {
-      // Group name matches query → show group (all table filters still apply inside GroupRow)
+      const scopedTables = viewAllowed ? g.tables.filter((t) => viewAllowed.has(t)) : g.tables;
+      if (!scopedTables.length) return false;
       if (lcQuery && g.name.toLowerCase().includes(lcQuery) && !annFilters.size) return true;
-      return g.tables.some((t) => {
+      return scopedTables.some((t) => {
         const nameOk = !lcQuery || g.name.toLowerCase().includes(lcQuery) || t.toLowerCase().includes(lcQuery);
         return nameOk && tablePassesFilters(t);
       });
     });
-  }, [groups, lcQuery, annFilters, tableAnnotations]);
+  }, [groups, lcQuery, annFilters, tableAnnotations, viewAllowed]);
 
   const filteredUngrouped = useMemo(() => {
     return ungroupedTables.filter((t) => {
@@ -187,6 +188,7 @@ export function GroupPanel() {
             filter={lcQuery}
             annFilters={annFilters}
             tableAnnotations={tableAnnotations}
+            viewAllowed={viewAllowed}
           />
         ))}
         {filteredUngrouped.length > 0 ? (
@@ -251,9 +253,10 @@ interface GroupRowProps {
   filter: string;
   annFilters: Set<AnnotationFilter>;
   tableAnnotations: Map<string, Set<AnnotationFilter>>;
+  viewAllowed: Set<string> | null;
 }
 
-function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilters, tableAnnotations }: GroupRowProps) {
+function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilters, tableAnnotations, viewAllowed }: GroupRowProps) {
   const [userExpanded, setUserExpanded] = useState(initialExpanded);
   const [popup, setPopup] = useState<{ x: number; y: number } | null>(null);
   const hidden = state?.hidden ?? false;
@@ -287,8 +290,9 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
     setPopup(popupAnchorFor(anchorRect));
   };
 
+  const scopedTables = viewAllowed ? group.tables.filter((t) => viewAllowed.has(t)) : group.tables;
   const memberTables = (filter || annFilters.size)
-    ? group.tables.filter((t) => {
+    ? scopedTables.filter((t) => {
         const nameOk = !filter || group.name.toLowerCase().includes(filter) || t.toLowerCase().includes(filter);
         const annOk = !annFilters.size || (() => {
           const flags = tableAnnotations.get(t);
@@ -298,7 +302,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
         })();
         return nameOk && annOk;
       })
-    : group.tables;
+    : scopedTables;
 
   return (
     <>
@@ -310,7 +314,7 @@ function GroupRow({ group, state, hiddenTables, initialExpanded, filter, annFilt
         >{expanded ? <IconChevronDown size={10} /> : <IconChevronRight size={10} />}</button>
         <button class="ddd-group-swatch" style={{ background: color }} title="Change color" onClick={onGearClick} />
         <button class="ddd-group-name ddd-group-name--btn" title={`Focus ${group.name}`} onClick={() => focusGroup(group.name)}>{group.name}</button>
-        <span class="ddd-group-count">{group.tables.length}</span>
+        <span class="ddd-group-count">{scopedTables.length}</span>
         <button
           class={`ddd-icon-btn ${hidden ? 'is-off' : ''}`}
           onClick={toggleHidden}

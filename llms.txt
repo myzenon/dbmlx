@@ -1,6 +1,6 @@
 # DBMLX Language — AI Reference
 
-Version: 0.2.2
+Version: 0.2.3
 
 DBMLX (`.dbmlx`) is a superset of DBML. All standard DBML syntax is valid.
 This file documents only the dbmlx-specific extensions that don't exist in standard DBML.
@@ -198,7 +198,7 @@ renders at mouse position using `position: fixed` outside the SVG.
 ## Standard DBML — quick reference
 
 ```dbmlx
-Table schema.table_name [headercolor: "#hex"] {
+Table schema.table_name [headercolor: #rrggbb] {
   id           int           [pk, increment]
   name         varchar(255)  [not null, unique]
   status       job_status
