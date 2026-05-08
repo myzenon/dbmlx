@@ -1,3 +1,8 @@
+// TODO: lazy-load @dbml/core here instead of at module load time.
+// The ANTLR SQL parsers (MSSQL 3.8MB, PG 2.6MB, Snowflake 2.4MB, MySQL 2MB) are bundled
+// eagerly and inflate the extension to ~10MB, even though importFromSql is rarely used.
+// Fix: dynamic import('@dbml/core') inside importFromSql() + split into a separate esbuild
+// entry point so the parsers are only loaded when the command actually fires.
 import * as vscode from 'vscode';
 import { importer, exporter } from '@dbml/core';
 import type { WorkspaceIndex } from './workspaceIndex';
