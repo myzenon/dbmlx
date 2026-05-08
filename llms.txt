@@ -96,6 +96,7 @@ Annotation summary:
 - `[drop]` — column or table is being removed; will not exist after migration
 - `[modify: ...]` — column was changed; write the column in its NEW state, record
   original values inside `modify:`. All keys are optional — omit unchanged ones.
+- `[before: ...]` — explicit alias for `modify:`, same keys and behavior; preferred for clarity
 
 `[add]` and `[drop]` work on the Table declaration line to mark an entire table:
 ```dbmlx
@@ -128,7 +129,7 @@ Ref annotations are visualized when the corresponding view toggle is enabled:
 - `[drop]` refs: shown as red dashed lines ("Dropped refs" toggle, default off)
 - `[add]` refs: shown as green lines ("Added ref color" toggle, default off)
 
-`modify:` keys:
+`modify:` / `before:` keys (`before:` is a clearer alias for `modify:`, both are identical):
 
 | Key | Format | Records |
 |---|---|---|
@@ -140,7 +141,7 @@ Ref annotations are visualized when the corresponding view toggle is enabled:
 | `unique` | `unique=true\|false` | unique status before |
 | `increment` | `increment=true\|false` | auto-increment status before |
 
-All `modify:` keys can be combined freely with standard column settings (`pk`, `not null`, `unique`, etc.) in any order.
+All `modify:`/`before:` keys can be combined freely with standard column settings (`pk`, `not null`, `unique`, etc.) in any order.
 
 ---
 

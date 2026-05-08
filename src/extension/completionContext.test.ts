@@ -112,6 +112,12 @@ describe('classifyBracket', () => {
     expect(classifyBracket('pk, modify: name="x", ').kind).toBe('modify-keys');
   });
 
+  it('modify-keys when last keyword is before: (alias)', () => {
+    expect(classifyBracket('before: n').kind).toBe('modify-keys');
+    expect(classifyBracket('pk, before: name="x", ').kind).toBe('modify-keys');
+    expect(classifyBracket('ref: > users.id, before: name="x", ').kind).toBe('modify-keys');
+  });
+
   it('ref-operator right after ref:', () => {
     expect(classifyBracket('ref:').kind).toBe('ref-operator');
     expect(classifyBracket('ref: ').kind).toBe('ref-operator');

@@ -278,7 +278,9 @@ Table orders {
 Ref: orders.customer_id > customers.id
 ```
 
-### `[modify:]` keys
+### `[modify:]` / `[before:]` keys
+
+`[before:]` is a clearer alias for `[modify:]` — both accept the same keys and produce identical output. Use whichever reads better to you; `[modify:]` is kept for backward compatibility.
 
 All keys are optional. Omit any key whose value did not change. Keys can appear in any order and combine freely with standard column settings (`pk`, `not null`, `unique`, etc.).
 
@@ -302,7 +304,7 @@ The before/after diff display uses these values:
 |---|---|---|
 | `[add]` | Column being added. Does not exist before migration. | Green accent |
 | `[drop]` | Column being removed. Will not exist after migration. | Red strikethrough |
-| `[modify: ...]` | Column was changed. Write new state on the line; record old values inside `modify:`. | Two-row display: original (muted strikethrough) → new (amber) |
+| `[modify: ...]` / `[before: ...]` | Column was changed. Write new state on the line; record old values inside `modify:`/`before:`. | Two-row display: original (muted strikethrough) → new (amber) |
 
 ### Index-level annotations
 
@@ -340,7 +342,7 @@ The `[modify: pk=false]` column annotation follows the same color convention: wh
 
 ### Table-level annotations
 
-`[add]`, `[drop]`, and `[modify: name="old"]` can appear on the `Table` declaration line:
+`[add]`, `[drop]`, and `[modify: name="old"]` / `[before: name="old"]` can appear on the `Table` declaration line:
 
 ```dbmlx
 Table audit_log [add] {
@@ -371,10 +373,11 @@ Table new_users [modify: name="users"] {
 | `Table name [add] { ... }` | Entire table being created in this migration | Green border, `+NEW` badge |
 | `Table name [drop] { ... }` | Entire table being removed in this migration | Red border, dimmed, `DROP` badge |
 | `Table new_name [modify: name="old_name"] { ... }` | Table is being renamed | Amber border, before→after name diff in header |
+| `Table new_name [before: name="old_name"] { ... }` | Same as above (`before:` alias) | Amber border, before→after name diff in header |
 
 - Annotations are stripped before passing to the underlying DBML parser — they never cause parse errors.
 - `[add]` and `[drop]` can be combined with standard column settings: `[not null, add]`, `[pk, drop]`.
-- Hover over `[add]`, `[drop]`, or `[modify:]` in the editor for inline documentation.
+- Hover over `[add]`, `[drop]`, `[modify:]`, or `[before:]` in the editor for inline documentation.
 
 ---
 

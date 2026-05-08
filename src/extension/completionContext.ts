@@ -104,7 +104,7 @@ export type BracketState =
 export function classifyBracket(bracketContent: string): BracketState {
   let lastModify = -1, lastRef = -1;
   let m: RegExpExecArray | null;
-  const modRe = /\bmodify\s*:/gi;
+  const modRe = /\b(?:modify|before)\s*:/gi;
   const refRe = /\bref\s*:/gi;
   while ((m = modRe.exec(bracketContent))) lastModify = m.index;
   while ((m = refRe.exec(bracketContent))) lastRef = m.index;

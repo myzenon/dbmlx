@@ -102,7 +102,7 @@ function extractMigrationChanges(source: string): {
 
   const TABLE_OPEN_RE = /^\s*[Tt]able\s+([\w"`.]+(?:\.[\w"`.]+)?)/;
   const COL_NAME_RE = /^\s+(?:"([^"]+)"|(\w+))\s/;
-  const MODIFY_RE = /\[[^\]]*\bmodify:\s*([^\]]*)\]/i;
+  const MODIFY_RE = /\[[^\]]*\b(?:modify|before):\s*([^\]]*)\]/i;
 
   for (const line of lines) {
     const clean = line.replace(/"[^"]*"|'[^']*'|`[^`]*`|\/\/.*$/g, '');
@@ -127,7 +127,7 @@ function extractMigrationChanges(source: string): {
           tableChanges.set(currentTableRawName, 'add');
         } else if (/\bdrop\b/i.test(inner)) {
           tableChanges.set(currentTableRawName, 'drop');
-        } else if (/\bmodify\s*:/i.test(inner)) {
+        } else if (/\b(?:modify|before)\s*:/i.test(inner)) {
           tableChanges.set(currentTableRawName, 'modify');
           const fromName = /\bname\s*=\s*"([^"]*)"/.exec(inner)?.[1];
           if (fromName) tableFromNames.set(currentTableRawName, fromName);
@@ -204,7 +204,7 @@ function extractMigrationChanges(source: string): {
         const KV = /\w+\s*=\s*(?:"[^"]*"|true|false)/;
         const NEXT_KV = /(?=\w+\s*=\s*(?:"|true|false))/;
         const cleaned = content
-          .replace(new RegExp(`\\s*\\bmodify:\\s*(?:${KV.source}(?:\\s*,\\s*${NEXT_KV.source})?)*\\s*`, 'gi'), '')
+          .replace(new RegExp(`\\s*\\b(?:modify|before):\\s*(?:${KV.source}(?:\\s*,\\s*${NEXT_KV.source})?)*\\s*`, 'gi'), '')
           .split(',').map((s: string) => s.trim()).filter((s: string) => !/^(add|drop)$/i.test(s)).join(', ')
           .replace(/,\s*,/g, ',').replace(/^\s*,\s*/, '').replace(/\s*,\s*$/, '').trim();
         return cleaned ? `[${cleaned}]` : '';
@@ -260,7 +260,7 @@ function extractMigrationChanges(source: string): {
             const KV = /\w+\s*=\s*(?:"[^"]*"|true|false)/;
             const NEXT_KV = /(?=\w+\s*=\s*(?:"|true|false))/;
             const cleaned = inner
-              .replace(new RegExp(`\\s*\\bmodify:\\s*(?:${KV.source}(?:\\s*,\\s*${NEXT_KV.source})?)*\\s*`, 'gi'), '')
+              .replace(new RegExp(`\\s*\\b(?:modify|before):\\s*(?:${KV.source}(?:\\s*,\\s*${NEXT_KV.source})?)*\\s*`, 'gi'), '')
               .replace(/,\s*,/g, ',')
               .replace(/^\s*,\s*/, '').replace(/\s*,\s*$/, '')
               .trim();

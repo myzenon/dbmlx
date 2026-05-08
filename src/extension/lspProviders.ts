@@ -67,6 +67,10 @@ const DIFF_ANNOTATION_HOVER: Record<string, { title: string; body: string }> = {
     title: 'modify — Modified Column or Renamed Table',
     body: 'Marks this **column** as modified, or a **table** as renamed, in the current migration.\n\n**Column:** Write the new name/type on the line; record originals in `modify:`.\n```dbmlx\nuser_login text [modify: name="username", type="varchar(50)"]\nemail varchar(255) [modify: type="varchar(100)"]\n```\n\n**Table rename:** Write the new table name; record the old name with `name=`.\n```dbmlx\nTable new_users [modify: name="users"] {\n  id int [pk]\n}\n```\nRenders with an amber border and a before→after name diff in the header.',
   },
+  before: {
+    title: 'before — Modified Column or Renamed Table (explicit)',
+    body: 'Clearer alias for `modify:`. Records the **old** (before-migration) values for a modified column or renamed table.\n\n**Column:** Write the new name/type on the line; record the old values in `before:`.\n```dbmlx\nuser_login text [before: name="username", type="varchar(50)"]\nemail varchar(255) [before: type="varchar(100)"]\n```\n\n**Table rename:** Write the new table name; record the old name with `name=`.\n```dbmlx\nTable new_users [before: name="users"] {\n  id int [pk]\n}\n```\nRenders with an amber border and a before→after name diff in the header.',
+  },
 };
 
 const SETTING_HOVER: Record<string, { title: string; body: string }> = {
@@ -372,6 +376,7 @@ const COLUMN_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.Complet
   { label: 'add', doc: 'Migration diff — column is being added in this migration.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'drop', doc: 'Migration diff — column is being dropped in this migration.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'modify: ', doc: 'Migration diff — column is being modified. Use name="old", type="old", default="old" for value changes; pk=true/false, not_null=true/false, unique=true/false, increment=true/false to record constraint changes.', kind: vscode.CompletionItemKind.EnumMember },
+  { label: 'before: ', doc: 'Migration diff — same as `modify:`, but explicit: records the old (before-migration) values. Use name="old", type="old", default="old" for value changes; pk=true/false, not_null=true/false, unique=true/false, increment=true/false to record constraint changes.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'add ref: ', doc: 'Migration diff — this inline FK is being added in this migration.\n\n```dbmlx\nuser_id int [add ref: > users.id]\n```', kind: vscode.CompletionItemKind.Reference, snippet: 'add ref: ' },
   { label: 'drop ref: ', doc: 'Migration diff — this inline FK is being dropped in this migration.\n\n```dbmlx\nold_id int [drop ref: > legacy.id]\n```', kind: vscode.CompletionItemKind.Reference, snippet: 'drop ref: ' },
 ];
@@ -404,6 +409,7 @@ const TABLE_HEADER_SETTINGS: Array<{ label: string; doc: string; kind?: vscode.C
   { label: 'add',  doc: 'Migration diff — this entire table is being created in this migration. Renders with a green border and +NEW badge.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'drop', doc: 'Migration diff — this entire table is being dropped in this migration. Renders with a red border, dimmed columns, and DROP badge.', kind: vscode.CompletionItemKind.EnumMember },
   { label: 'modify: ', doc: 'Migration diff — table is being renamed. Write the NEW name on the Table line, record the old name with name="old_name". Renders with an amber border and a before→after name diff in the header.', kind: vscode.CompletionItemKind.EnumMember, snippet: 'modify: name="${1:old_name}"' },
+  { label: 'before: ', doc: 'Migration diff — same as `modify:`, but explicit: records the old table name. Write the NEW name on the Table line, record the old name with name="old_name". Renders with an amber border and a before→after name diff in the header.', kind: vscode.CompletionItemKind.EnumMember, snippet: 'before: name="${1:old_name}"' },
   { label: 'headercolor: ', doc: 'Custom header color for this table in the diagram.', kind: vscode.CompletionItemKind.Property },
 ];
 
@@ -735,7 +741,7 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
         // sortText preserves the curated order (most useful first)
         item.sortText = String(i).padStart(2, '0');
         // Auto-trigger follow-up suggestions for keywords that take arguments
-        if (s.label === 'modify: ') item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest modify keys' };
+        if (s.label === 'modify: ' || s.label === 'before: ') item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest modify keys' };
         if (s.label === 'ref: ' || s.label === 'add ref: ' || s.label === 'drop ref: ') item.command = { command: 'editor.action.triggerSuggest', title: 'Suggest operators' };
         return item;
       });

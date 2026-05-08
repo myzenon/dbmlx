@@ -71,7 +71,7 @@ Table orders {
 
 - `[add]` — rendered with a green accent (column) or green border + `+NEW` badge (table)
 - `[drop]` — rendered with a red strikethrough (column) or red border + `DROP` badge (table)
-- `[modify: ...]` — two-row display: original (strikethrough) → new (amber). All keys are optional.
+- `[modify: ...]` / `[before: ...]` — two-row display: original (strikethrough) → new (amber). `before:` is a clearer alias for `modify:`. All keys are optional.
 
 Refs can be annotated too — top-level with `[add]`/`[drop]` after the endpoint pair, inline with `add ref:` / `drop ref:` as a prefixed item:
 
@@ -86,7 +86,7 @@ Table orders {
 }
 ```
 
-`[add]`, `[drop]`, and `[modify: name="old"]` work on the `Table` declaration line too:
+`[add]`, `[drop]`, and `[modify: name="old"]` / `[before: name="old"]` work on the `Table` declaration line too:
 
 ```dbmlx
 Table audit_log [add] {                    // new table — green border + +NEW badge
@@ -100,7 +100,7 @@ Table new_users [modify: name="users"] {   // renamed table — amber border, ol
 }
 ```
 
-`modify:` keys — write the column in its new state, record old values in the annotation:
+`modify:` / `before:` keys — write the column in its new state, record old values in the annotation:
 
 | Key | Format | Records |
 |---|---|---|
@@ -112,7 +112,7 @@ Table new_users [modify: name="users"] {   // renamed table — amber border, ol
 | `unique` | `unique=true\|false` | unique status before |
 | `increment` | `increment=true\|false` | auto-increment status before |
 
-All `modify:` keys combine freely with standard column settings in any order: `[pk, not null, modify: name="old", pk=false]`.
+All `modify:`/`before:` keys combine freely with standard column settings in any order: `[pk, not null, before: name="old", pk=false]`.
 
 ---
 
@@ -140,7 +140,7 @@ The **Table Groups** panel (top-left of the diagram) lists all `TableGroup`s plu
 - **Annotation filter chips** — filter the list to tables with migration changes:
   - `+NEW` — tables with `[add]` annotation
   - `DROP` — tables with `[drop]` annotation
-  - `DIFF` — tables that have any column-level diff annotation (`[add]`, `[drop]`, or `[modify:]`)
+  - `DIFF` — tables that have any column-level diff annotation (`[add]`, `[drop]`, `[modify:]`, or `[before:]`)
   - Chips combine with the search query (OR logic within chips). A colored dot on each table row indicates its annotation state.
 
 ### Diagram Views
@@ -174,7 +174,7 @@ Full language server features for `.dbmlx` files:
 
 | Feature | Details |
 |---|---|
-| **Hover** | Table schema with column diff state; keyword docs for every construct including `[add]`, `[drop]`, `[modify:]` |
+| **Hover** | Table schema with column diff state; keyword docs for every construct including `[add]`, `[drop]`, `[modify:]`, `[before:]` |
 | **Go-to-definition** | Jump to table or **column** definition; `!include` → open included file |
 | **Document symbols** | Outline panel lists all tables and columns |
 | **Completions** | Table names, column names, SQL types, settings, ref operators, diff annotations, `!include` file paths; `Ref:` completions chain automatically: schema → table → column → operator → right-side schema/table/column without `Ctrl+Space`; composite FK tuple syntax supported |

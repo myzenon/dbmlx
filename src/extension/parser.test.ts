@@ -177,6 +177,50 @@ Table users {
   });
 });
 
+// ─── Column [before:] alias for [modify:] ───────────────────────────────────
+
+describe('parseDbmlx — column [before:] (alias for [modify:])', () => {
+  it('[before:] produces kind=modify with same fromName/fromType extraction', () => {
+    const src = `
+Table users {
+  user_login text [before: name="username", type="varchar(50)"]
+}`;
+    const { schema } = parseDbmlx(src);
+    const change = schema?.tables[0]?.columnChanges?.['user_login'];
+    expect(change?.kind).toBe('modify');
+    if (change?.kind !== 'modify') return;
+    expect(change.fromName).toBe('username');
+    expect(change.fromType).toBe('varchar(50)');
+  });
+
+  it('[before:] extracts boolean flags identically to [modify:]', () => {
+    const src = `
+Table users {
+  id int [pk, not null, before: pk=false, not_null=false, unique=true, increment=false]
+}`;
+    const { schema } = parseDbmlx(src);
+    const change = schema?.tables[0]?.columnChanges?.['id'];
+    expect(change?.kind).toBe('modify');
+    if (change?.kind !== 'modify') return;
+    expect(change.fromPk).toBe(false);
+    expect(change.fromNotNull).toBe(false);
+    expect(change.fromUnique).toBe(true);
+    expect(change.fromIncrement).toBe(false);
+  });
+
+  it('[before:] combines with column settings (parsed by @dbml/core after strip)', () => {
+    const src = `
+Table users {
+  email varchar(255) [not null, before: type="text"]
+}`;
+    const { schema } = parseDbmlx(src);
+    const col = schema?.tables[0]?.columns.find((c) => c.name === 'email');
+    expect(col?.type).toBe('varchar(255)');
+    expect(col?.notNull).toBeTruthy();
+    expect(schema?.tables[0]?.columnChanges?.['email']?.kind).toBe('modify');
+  });
+});
+
 // ─── Table-level [add] / [drop] / [modify:] ──────────────────────────────────
 
 describe('parseDbmlx — table-level annotations', () => {
@@ -203,6 +247,17 @@ Table old_cache [drop] {
   it('[modify: name="old_name"] sets tableChange=modify and tableFromName', () => {
     const src = `
 Table new_users [modify: name="users"] {
+  id int [pk]
+}`;
+    const { schema } = parseDbmlx(src);
+    const table = schema?.tables.find((t) => t.tableName === 'new_users');
+    expect(table?.tableChange).toBe('modify');
+    expect(table?.tableFromName).toBe('users');
+  });
+
+  it('[before: name="old_name"] is an alias — same tableChange=modify and tableFromName', () => {
+    const src = `
+Table new_users [before: name="users"] {
   id int [pk]
 }`;
     const { schema } = parseDbmlx(src);
