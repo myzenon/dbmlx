@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "viewport": { "x": 7, "y": 89, "zoom": 0.509 },
+  "tables": {
+    "public.audit_log": { "x": 464, "y": 66 },
+    "public.categories": { "x": 464, "y": 968 },
+    "public.discount_rules": { "x": 848, "y": 674 },
+    "public.products": { "x": 848, "y": 898 },
+    "public.sessions": { "x": 464, "y": 415 },
+    "public.users": { "x": 80, "y": 310 }
+  },
+  "groups": {
+  },
+  "edges": {}
+}

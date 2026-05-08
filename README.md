@@ -8,6 +8,13 @@ Your schema stays in plain text. The extension reads it, renders it, and persist
 
 → **[Full language reference](docs/language-reference.md)** — complete syntax, all constructs, migration diffs, DiagramView, layout format.
 
+<table>
+<tr>
+<td><img src="examples/migration_demo.png" alt="Migration diff diagram" width="480"/><br/><sub><b>Migration diff</b> — add/drop/rename tables and columns visualized as a before/after diagram</sub></td>
+<td><img src="examples/ecommerce.png" alt="E-commerce schema diagram" width="480"/><br/><sub><b>E-commerce schema</b> — DiagramViews, TableGroups, and edge routing across 20+ tables</sub></td>
+</tr>
+</table>
+
 ---
 
 ## Install

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "viewport": { "x": -137, "y": 254, "zoom": 0.652 },
+  "tables": {
+    "public.order_items": { "x": 855, "y": 299 },
+    "public.orders": { "x": 501, "y": 370 },
+    "public.product_variants": { "x": 1155, "y": 92 },
+    "public.products": { "x": 708, "y": -15 },
+    "public.shipments": { "x": 896, "y": 554 },
+    "public.users": { "x": 185, "y": 74 }
+  },
+  "groups": {
+  },
+  "edges": {}
+}
