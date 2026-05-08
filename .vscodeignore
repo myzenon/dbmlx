@@ -10,6 +10,7 @@ src/**
 test/**
 specs/**
 scripts/**
+examples/**
 
 # Config / lock files
 .gitignore
