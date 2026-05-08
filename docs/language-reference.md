@@ -91,6 +91,10 @@ Table orders {
 
 **Completions**: Typing `Ref "name": ` triggers schema-name completions automatically. Picking a schema immediately suggests tables; picking a table suggests columns; picking a column suggests operators; picking an operator suggests the right-side schema — the full chain triggers without `Ctrl+Space`.
 
+**Code actions** (lightbulb / `Ctrl+.`):
+- On a top-level `Ref:` line — *Convert Ref → inline*: rewrites the Ref as an inline `[ref: ...]` on either endpoint. Two options appear; the FK-convention side is listed first (right side for `<`, left side for `>`). Migration annotations (`[add]`/`[drop]`) become `[add ref: ...]`/`[drop ref: ...]` on the inline; other settings (`delete: cascade` etc.) are carried over. Disabled with a reason when the column lives in an `!include`d file, or when the Ref uses composite `(c1, c2)` tuple syntax (composite refs have no inline form).
+- On a column line with `[ref: ...]` — *Lift to top-level*: rewrites the inline ref as a new `Ref:` line right after the table block. Uses the FK-on-right convention: when inline op is `>`, the lifted Ref flips order and operator so the FK column ends up on the right. One action per inline ref on the line (a ref-migration column with `[add ref: > new, drop ref: > old]` produces two separate lift actions).
+
 ### Ref migration annotations
 
 Mark a ref as being added or dropped in a migration. See §8 for full details.

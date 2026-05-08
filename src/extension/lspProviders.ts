@@ -1025,6 +1025,293 @@ class DbmlxCompletionProvider implements vscode.CompletionItemProvider {
   }
 }
 
+// ── Ref → Inline Ref Code Action ─────────────────────────────────────────────
+
+const REF_LINE_RE = /^\s*[Rr]ef\b\s*(?:"[^"]*"|\w*)?\s*:\s*([\w."]+)\s*(<>|[<>-])\s*([\w."]+)(?:\s*\[([^\]]*)\])?/;
+
+/** Split a top-level Ref's `[...]` settings into `add`/`drop` annotation and other settings. */
+function parseRefBracket(bracketRaw: string | undefined): { kind: 'plain' | 'add' | 'drop'; extra: string[] } {
+  if (!bracketRaw) return { kind: 'plain', extra: [] };
+  let kind: 'plain' | 'add' | 'drop' = 'plain';
+  const extra: string[] = [];
+  for (const item of bracketRaw.split(',').map(s => s.trim()).filter(Boolean)) {
+    if (/^add$/i.test(item)) kind = 'add';
+    else if (/^drop$/i.test(item)) kind = 'drop';
+    else extra.push(item);
+  }
+  return { kind, extra };
+}
+
+/** Parse a dotted qualified endpoint like `"schema"."table"."col"` → { table, col }. */
+function parseRefEndpoint(raw: string): { table: string; col: string } | null {
+  const parts: string[] = [];
+  let cur = '';
+  let inQuote = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]!;
+    if (ch === '"') { inQuote = !inQuote; cur += ch; }
+    else if (ch === '.' && !inQuote) { parts.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  parts.push(cur);
+  if (parts.length < 2) return null;
+  const col = parts[parts.length - 1]!.replace(/"/g, '');
+  const table = parts[parts.length - 2]!.replace(/"/g, '');
+  return { table, col };
+}
+
+function flipOperator(op: string): string {
+  if (op === '<') return '>';
+  if (op === '>') return '<';
+  return op; // '-' and '<>' stay the same
+}
+
+/** Scan the document and return a map of bare table name → line number of its header. */
+function buildTableLineMap(doc: vscode.TextDocument): Map<string, number> {
+  const map = new Map<string, number>();
+  for (let i = 0; i < doc.lineCount; i++) {
+    const m = TABLE_HEADER_RE.exec(doc.lineAt(i).text);
+    if (!m) continue;
+    const raw = m[1]!.replace(/"/g, '');
+    const bare = raw.includes('.') ? raw.split('.').pop()! : raw;
+    map.set(bare, i);
+  }
+  return map;
+}
+
+/**
+ * Find the line number of a column inside a table block.
+ * Returns -1 if not found.
+ */
+function findColumnLine(doc: vscode.TextDocument, tableHeaderLine: number, colName: string): number {
+  let depth = 0;
+  let inBlock = false;
+  for (let i = tableHeaderLine; i < doc.lineCount; i++) {
+    const text = doc.lineAt(i).text;
+    const opens = (text.match(/\{/g) ?? []).length;
+    const closes = (text.match(/\}/g) ?? []).length;
+    if (!inBlock && opens > 0) inBlock = true;
+    depth += opens - closes;
+    if (inBlock && depth <= 0) break;
+    if (!inBlock) continue;
+    // Match column name at start of indented line
+    const colRe = /^\s+(?:"([^"]+)"|(\w+))\s/;
+    const m = colRe.exec(text);
+    const found = m ? (m[1] ?? m[2]) : undefined;
+    if (found === colName) return i;
+  }
+  return -1;
+}
+
+class DbmlxRefConvertCodeActionProvider implements vscode.CodeActionProvider {
+  provideCodeActions(
+    doc: vscode.TextDocument,
+    range: vscode.Range,
+  ): vscode.CodeAction[] {
+    const line = doc.lineAt(range.start.line);
+    if (!/^\s*[Rr]ef\b/.test(line.text)) return [];
+
+    const m = REF_LINE_RE.exec(line.text);
+    if (!m) {
+      // Composite refs use `.(col1, col2)` tuple syntax — DBML has no inline form for these.
+      if (/\.\s*\(/.test(line.text)) {
+        const action = new vscode.CodeAction(
+          'Convert Ref — inline (not supported for composite refs)',
+          vscode.CodeActionKind.RefactorRewrite,
+        );
+        action.disabled = { reason: 'Composite refs (with `(col1, col2)` tuples) cannot be expressed as inline refs — DBML inline refs only support single columns' };
+        return [action];
+      }
+      return [];
+    }
+
+    const [, leftRaw, op, rightRaw, bracketRaw] = m as unknown as [string, string, string, string, string | undefined];
+    const left = parseRefEndpoint(leftRaw);
+    const right = parseRefEndpoint(rightRaw);
+    if (!left || !right) return [];
+
+    const { kind: refKind, extra: extraSettings } = parseRefBracket(bracketRaw);
+    const refPrefix = refKind === 'add' ? 'add ' : refKind === 'drop' ? 'drop ' : '';
+
+    const tableLines = buildTableLineMap(doc);
+    const actions: vscode.CodeAction[] = [];
+
+    const makeAction = (
+      ep: { table: string; col: string },
+      targetRaw: string,
+      inlineOp: string,
+    ): vscode.CodeAction => {
+      const kindLabel = refKind !== 'plain' ? ` [${refKind}]` : '';
+      const label = `Convert Ref — inline on \`${ep.table}.${ep.col}\`${kindLabel}`;
+      const action = new vscode.CodeAction(label, vscode.CodeActionKind.RefactorRewrite);
+
+      const tableHeaderLine = tableLines.get(ep.table);
+      if (tableHeaderLine === undefined) {
+        action.disabled = { reason: `Table \`${ep.table}\` is not defined in this file — open the file that defines it to convert` };
+        return action;
+      }
+
+      const colLine = findColumnLine(doc, tableHeaderLine, ep.col);
+      if (colLine === -1) {
+        action.disabled = { reason: `Column \`${ep.col}\` not found in \`${ep.table}\` block in this file` };
+        return action;
+      }
+
+      const edit = new vscode.WorkspaceEdit();
+
+      // Add inline ref to the column line, preserving any extra Ref settings (delete: cascade, etc.)
+      const colText = doc.lineAt(colLine).text;
+      const bracketMatch = /\[([^\]]*)\]/.exec(colText);
+      const refClause = `${refPrefix}ref: ${inlineOp} ${targetRaw}`;
+      const newClauses = [refClause, ...extraSettings].join(', ');
+      let newColText: string;
+      if (bracketMatch) {
+        const inner = bracketMatch[1]!.trim();
+        const replacement = inner ? `[${inner}, ${newClauses}]` : `[${newClauses}]`;
+        newColText = colText.slice(0, bracketMatch.index) + replacement + colText.slice(bracketMatch.index + bracketMatch[0].length);
+      } else {
+        newColText = colText.trimEnd() + ` [${newClauses}]`;
+      }
+      edit.replace(doc.uri, doc.lineAt(colLine).range, newColText);
+
+      // Delete the Ref line (include its newline)
+      const refLineStart = new vscode.Position(line.lineNumber, 0);
+      const refLineEnd = line.lineNumber + 1 < doc.lineCount
+        ? new vscode.Position(line.lineNumber + 1, 0)
+        : new vscode.Position(line.lineNumber, line.text.length);
+      edit.delete(doc.uri, new vscode.Range(refLineStart, refLineEnd));
+
+      action.edit = edit;
+      return action;
+    };
+
+    const leftAction = makeAction(left, rightRaw, op);
+    const rightAction = makeAction(right, leftRaw, flipOperator(op));
+
+    // Order by FK-convention: the "many" side (where the FK column lives) goes first.
+    //   `<` → right is many → right first
+    //   `>` → left is many → left first
+    //   `-` / `<>` → ambiguous → left first by default
+    if (op === '<') return [rightAction, leftAction];
+    return [leftAction, rightAction];
+  }
+}
+
+// ── Inline Ref → Top-level Ref Code Action ───────────────────────────────────
+
+interface ParsedInlineRef {
+  kind: 'plain' | 'add' | 'drop';
+  op: string;
+  target: string; // raw as written in file
+}
+
+/** Extract all inline ref items from a column bracket. */
+function parseColumnInlineRefs(colText: string): ParsedInlineRef[] {
+  const bracketMatch = /\[([^\]]*)\]/.exec(colText);
+  if (!bracketMatch) return [];
+  const results: ParsedInlineRef[] = [];
+  for (const item of bracketMatch[1]!.split(',').map(s => s.trim()).filter(Boolean)) {
+    const annotated = /^(add|drop)\s+ref:\s*(<>|[<>-])\s*([\w."]+(?:\.[\w."]+)*)/i.exec(item);
+    if (annotated) {
+      results.push({ kind: annotated[1]!.toLowerCase() as 'add' | 'drop', op: annotated[2]!, target: annotated[3]! });
+      continue;
+    }
+    const plain = /^ref:\s*(<>|[<>-])\s*([\w."]+(?:\.[\w."]+)*)/i.exec(item);
+    if (plain) results.push({ kind: 'plain', op: plain[1]!, target: plain[2]! });
+  }
+  return results;
+}
+
+/** Remove one specific inline ref item from the column line's bracket. Trims leading whitespace if the bracket becomes empty. */
+function removeOneInlineRef(colText: string, ref: ParsedInlineRef): string {
+  return colText.replace(/(\s*)\[([^\]]*)\]/, (_m, lead: string, inner: string) => {
+    const kept = inner.split(',').map(s => s.trim()).filter(Boolean).filter(item => {
+      const a = /^(add|drop)\s+ref:\s*(<>|[<>-])\s*([\w."]+(?:\.[\w."]+)*)/i.exec(item);
+      if (a) return !(a[1]!.toLowerCase() === ref.kind && a[2] === ref.op && a[3] === ref.target);
+      const p = /^ref:\s*(<>|[<>-])\s*([\w."]+(?:\.[\w."]+)*)/i.exec(item);
+      if (p) return !(ref.kind === 'plain' && p[1] === ref.op && p[2] === ref.target);
+      return true;
+    });
+    return kept.length > 0 ? `${lead}[${kept.join(', ')}]` : '';
+  });
+}
+
+/** Scan backward from lineNum to find the enclosing Table header. Returns raw name as written. */
+function findEnclosingTable(doc: vscode.TextDocument, lineNum: number): { headerLine: number; rawName: string } | null {
+  const re = /^\s*[Tt]able\s+([\w."]+(?:\.[\w."]+)?)/;
+  for (let i = lineNum - 1; i >= 0; i--) {
+    const m = re.exec(doc.lineAt(i).text);
+    if (m) return { headerLine: i, rawName: m[1]! };
+  }
+  return null;
+}
+
+/** Find the line number of the closing `}` of a Table block. */
+function findTableBlockEnd(doc: vscode.TextDocument, headerLine: number): number {
+  let depth = 0;
+  for (let i = headerLine; i < doc.lineCount; i++) {
+    const text = doc.lineAt(i).text;
+    depth += (text.match(/\{/g) ?? []).length;
+    depth -= (text.match(/\}/g) ?? []).length;
+    if (depth <= 0 && i > headerLine) return i;
+  }
+  return doc.lineCount - 1;
+}
+
+class DbmlxInlineRefLiftCodeActionProvider implements vscode.CodeActionProvider {
+  provideCodeActions(doc: vscode.TextDocument, range: vscode.Range): vscode.CodeAction[] {
+    const line = doc.lineAt(range.start.line);
+    const colText = line.text;
+
+    // Only trigger on indented lines (inside a block) that contain a ref: item
+    if (!/^\s/.test(colText)) return [];
+    if (!/\bref:\s*(?:<>|[<>-])/.test(colText)) return [];
+
+    const inlineRefs = parseColumnInlineRefs(colText);
+    if (inlineRefs.length === 0) return [];
+
+    const enclosing = findEnclosingTable(doc, range.start.line);
+    if (!enclosing) return [];
+
+    // Extract raw column name (preserving quotes if present)
+    const rawColMatch = /^\s+("(?:[^"]+)"|\w+)\s/.exec(colText);
+    if (!rawColMatch) return [];
+    const rawCol = rawColMatch[1]!;
+
+    const blockEnd = findTableBlockEnd(doc, enclosing.headerLine);
+    const actions: vscode.CodeAction[] = [];
+
+    for (const ref of inlineRefs) {
+      const source = `${enclosing.rawName}.${rawCol}`;
+      // FK-on-right convention: when inline op is `>` (this column is many = FK),
+      // flip order + operator so the FK column ends up on the right side of the Ref.
+      const flipForFkRight = ref.op === '>';
+      const refLeft = flipForFkRight ? ref.target : source;
+      const refRight = flipForFkRight ? source : ref.target;
+      const refOp = flipForFkRight ? '<' : ref.op;
+      const annotation = ref.kind === 'add' ? ' [add]' : ref.kind === 'drop' ? ' [drop]' : '';
+      const kindLabel = ref.kind !== 'plain' ? ` [${ref.kind}]` : '';
+      const label = `Lift to top-level — Ref: ${refLeft} ${refOp} ${refRight}${kindLabel}`;
+      const newRefLine = `Ref: ${refLeft} ${refOp} ${refRight}${annotation}`;
+
+      const action = new vscode.CodeAction(label, vscode.CodeActionKind.RefactorRewrite);
+      const edit = new vscode.WorkspaceEdit();
+
+      // Strip the inline ref item from the column line
+      const newColText = removeOneInlineRef(colText, ref);
+      edit.replace(doc.uri, line.range, newColText);
+
+      // Insert new Ref line right after the table block's closing `}`
+      edit.insert(doc.uri, doc.lineAt(blockEnd).range.end, '\n' + newRefLine);
+
+      action.edit = edit;
+      actions.push(action);
+    }
+
+    return actions;
+  }
+}
+
 // ── CodeLens ─────────────────────────────────────────────────────────────────
 
 const TABLE_HEADER_RE = /^\s*[Tt]able\s+([\w."]+(?:\.[\w."]+)?)/;
@@ -1070,5 +1357,15 @@ export function registerLspProviders(
       new DbmlxFormattingProvider(),
     ),
     vscode.languages.registerCodeLensProvider('dbmlx', new DbmlxCodeLensProvider()),
+    vscode.languages.registerCodeActionsProvider(
+      'dbmlx',
+      new DbmlxRefConvertCodeActionProvider(),
+      { providedCodeActionKinds: [vscode.CodeActionKind.RefactorRewrite] },
+    ),
+    vscode.languages.registerCodeActionsProvider(
+      'dbmlx',
+      new DbmlxInlineRefLiftCodeActionProvider(),
+      { providedCodeActionKinds: [vscode.CodeActionKind.RefactorRewrite] },
+    ),
   );
 }

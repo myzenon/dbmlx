@@ -72,6 +72,13 @@ Two isolated runtimes communicating via `postMessage` (types in `src/shared/type
 
 `DbmlxCodeLensProvider` in `lspProviders.ts` scans each line for `TABLE_HEADER_RE` and emits a `$(go-to-file) Focus in diagram` lens. The command `dbmlx.focusTableInDiagram(rawName)` in `extension.ts` strips quotes, resolves the table via `index.getTable`, finds the panel via `DiagramPanel.get(rootUri) ?? DiagramPanel.get(uri)` (fallback handles module-file diagrams), then calls `panel.focusTableInDiagram(table.name)` → `postMessage diagram:focusTable` → `focusTable()` in `viewport.ts`.
 
+### Ref ↔ inline ref Code Actions
+
+Two providers in `lspProviders.ts` offer `RefactorRewrite` actions:
+
+- `DbmlxRefConvertCodeActionProvider` — top-level `Ref:` line → inline `[ref:]`. Two options per Ref (left/right endpoint); ordered by FK convention (`<` op → right first; `>` op → left first). Disabled with reason when the target column lives in an `!include`d file (column not found in current file) or when the Ref uses composite tuple syntax `.(c1, c2)`. Migration `[add]`/`[drop]` annotations on the source Ref are mapped to `add ref:` / `drop ref:` prefixes on the resulting inline; other settings (`delete: cascade` etc.) are preserved alongside the ref clause.
+- `DbmlxInlineRefLiftCodeActionProvider` — inline `[ref: …]` → new top-level `Ref:` line inserted after the table block's closing `}`. One action per inline ref item (so a ref-migration column with `[add ref: > new, drop ref: > old]` produces two actions). FK-on-right convention: when inline op is `>`, the lifted Ref flips both order and operator (`Ref: target < source`). Schema-qualified / quoted identifiers from the enclosing `Table` header and column declaration are preserved verbatim in the source endpoint.
+
 ### Layout file format
 
 Keys alphabetically sorted, integers for coords, `collapsed: false`/`hidden: false` omitted, colors only when custom. Written atomically (tmp → rename). Roundtrip must be byte-identical.

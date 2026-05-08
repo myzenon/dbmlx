@@ -179,6 +179,7 @@ Full language server features for `.dbmlx` files:
 | **Document symbols** | Outline panel lists all tables and columns |
 | **Completions** | Table names, column names, SQL types, settings, ref operators, diff annotations, `!include` file paths; `Ref:` completions chain automatically: schema → table → column → operator → right-side schema/table/column without `Ctrl+Space`; composite FK tuple syntax supported |
 | **CodeLens** | "Focus in diagram" link above each `Table` definition — click to pan and zoom the open diagram to that table, un-hiding its group if needed |
+| **Code actions** | Convert between top-level `Ref:` and inline `[ref: ...]` (both directions). Lightbulb on a `Ref:` line offers attaching to either endpoint, FK side first by convention. Lightbulb on a column with `[ref: ...]` lifts it to a top-level `Ref:` (FK on right). Migration annotations (`[add]`/`[drop]`) round-trip; composite refs are not convertible (DBML inline refs are single-column). |
 | **Formatting** | Auto-format on save — consistent indentation, idempotent |
 | **Diagnostics** | Parse errors shown as squiggles with line/column |
 

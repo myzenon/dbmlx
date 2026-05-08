@@ -1,6 +1,6 @@
 # DBMLX Language — AI Reference
 
-Version: 0.2.0
+Version: 0.2.1
 
 DBMLX (`.dbmlx`) is a superset of DBML. All standard DBML syntax is valid.
 This file documents only the dbmlx-specific extensions that don't exist in standard DBML.
@@ -154,6 +154,22 @@ Clicking it pans and zooms the open diagram to that table (un-hiding and un-coll
 Works from both root files and `!include`d module files.
 
 To enable: requires `"editor.codeLens": true` in VS Code settings (default on).
+
+### Ref ↔ inline ref conversion (Code Actions)
+
+The editor offers refactoring lightbulbs that convert between top-level `Ref:` lines and inline `[ref: ...]` settings.
+
+**Top-level Ref → inline ref** (lightbulb on a `Ref:` line):
+- Two options: attach the inline ref to the left-side column, or the right-side column. The FK-convention side appears first (right side for `<`, left side for `>`).
+- The selected column must be defined in the current file. If it lives in an `!include`d file, the option appears disabled with a message pointing you to that file.
+- Migration annotations are preserved: `Ref: a > b [add]` → `[add ref: > b]`. Other settings like `delete: cascade` are preserved alongside the ref clause.
+- Composite refs (`a.(c1, c2) > b.(c1, c2)`) are not convertible — DBML inline refs are single-column only. The action shows as disabled with that reason.
+
+**Inline ref → top-level Ref** (lightbulb on a column line with `[ref: ...]`):
+- One action per inline ref item on the line (so `[add ref: > a, drop ref: > b]` produces two separate lift actions).
+- FK-on-right convention: the column with the inline ref *is* the FK, so when the inline op is `>`, the lift flips both order and operator → `Ref: target < source`. Other operators (`<`, `-`, `<>`) are emitted as-is.
+- Schema-qualified and quoted identifiers in the enclosing `Table` and column declaration are preserved verbatim in the source endpoint of the new Ref.
+- The new `Ref:` line is inserted right after the table block's closing `}`.
 
 ### Column hover highlight
 
