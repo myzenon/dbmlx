@@ -80,6 +80,21 @@ export function generateSvg(state: AppState): string {
     for (const c of r.target.columns) { let s = fkColsByTable.get(r.target.table); if (!s) { s = new Set(); fkColsByTable.set(r.target.table, s); } s.add(c); }
   }
 
+  // Per-table count of refs with refChange, attributed to FK-holder (relation '*').
+  // 1:1 / M:M (no clear FK holder) → both endpoints. Mirrors app.tsx.
+  const refChangeCountByTable = new Map<QualifiedName, number>();
+  {
+    const inc = (t: QualifiedName) => refChangeCountByTable.set(t, (refChangeCountByTable.get(t) ?? 0) + 1);
+    for (const r of schema.refs) {
+      if (!r.refChange) continue;
+      const srcMany = r.source.relation === '*';
+      const tgtMany = r.target.relation === '*';
+      if (srcMany && !tgtMany) inc(r.source.table);
+      else if (tgtMany && !srcMany) inc(r.target.table);
+      else { inc(r.source.table); inc(r.target.table); }
+    }
+  }
+
   const getRenderedTable = (t: Table): Table => {
     if (!showOnlyPkFk) return t;
     const fk = fkColsByTable.get(t.name) ?? new Set<string>();
@@ -278,7 +293,7 @@ export function generateSvg(state: AppState): string {
     const hdr = tableAnnColor ? withAlpha(tableAnnColor, 0.10) : hdrBase;
     const accent = tableAnnColor ?? tclr ?? tblBorder;
     const changes = t.columnChanges ?? {};
-    const changeCount = Object.keys(changes).length;
+    const changeCount = Object.keys(changes).length + (refChangeCountByTable.get(t.name) ?? 0);
 
     // Clipped internals
     L.push(`<g clip-path="url(#c${ti})">`);

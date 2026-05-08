@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2] - 2026-05-08
+
+### Added
+- **Ref add/drop marks the FK-holder as modified**: a column with `[add ref:]` / `[drop ref:]`, or a top-level `Ref ... [add]` / `[drop]`, now flags the FK-holding table (the `*`-side) as a modified table — amber left accent + numeric count badge in the header. For 1:1 / many-to-many refs (no clear FK holder) both endpoint tables are flagged. The Table Groups panel "modified" filter picks them up too. Mirrored in PNG/SVG export.
+- **Group panel focus menu**: clicking the focus icon next to a table in the Table Groups panel now opens a small popup with two options — *Focus in diagram* (existing behavior) and *Focus in code* (jumps to the table's source location). The single-click on the table name still focuses the diagram for the fast path.
+
+### Fixed
+- **Focus in diagram across panels**: the *Focus in diagram* CodeLens now searches every open diagram for the table, regardless of whether each panel was opened on a root file or a `!include`d module file. Previously, clicking the lens on a table defined in a module file failed when the diagram had been opened from the root, because `index.getTable` only saw root-file schemas. The command now asks each open panel's resolved schema directly.
+
 ## [0.2.0] - 2026-04-26
 
 ### Added

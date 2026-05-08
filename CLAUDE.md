@@ -70,7 +70,15 @@ Two isolated runtimes communicating via `postMessage` (types in `src/shared/type
 
 ### CodeLens
 
-`DbmlxCodeLensProvider` in `lspProviders.ts` scans each line for `TABLE_HEADER_RE` and emits a `$(go-to-file) Focus in diagram` lens. The command `dbmlx.focusTableInDiagram(rawName)` in `extension.ts` strips quotes, resolves the table via `index.getTable`, finds the panel via `DiagramPanel.get(rootUri) ?? DiagramPanel.get(uri)` (fallback handles module-file diagrams), then calls `panel.focusTableInDiagram(table.name)` → `postMessage diagram:focusTable` → `focusTable()` in `viewport.ts`.
+`DbmlxCodeLensProvider` in `lspProviders.ts` scans each line for `TABLE_HEADER_RE` and emits a `$(go-to-file) Focus in diagram` lens. The command `dbmlx.focusTableInDiagram(rawName)` in `extension.ts` strips quotes, then calls `DiagramPanel.findTableAndPanel([stripped, public.${stripped}])` — which walks every open panel, asks each one's *own* resolved schema (`index.getResolvedSchema(panel.dbmlUri)`), and prefers the active panel. This works whether each diagram was opened on a root file or an `!include`d module file. The matched panel runs `focusTableInDiagram(table.name)` → `postMessage diagram:focusTable` → `focusTable()` in `viewport.ts`.
+
+### Ref add/drop marks FK-holder as modified
+
+`app.tsx` builds `refChangeCountByTable: Map<QualifiedName, number>` from `schema.refs`: each ref with `refChange` increments the count on the FK-holder side (endpoint with `relation === '*'`); 1:1 / M:M (no clear FK holder) increments both endpoints. Passed as `refChangeCount` to `TableNode`, where it's added to `Object.keys(columnChanges).length` to drive the amber `ddd-table--changed` border + numeric badge. `groupPanel.tsx` mirrors the logic for the "modified" annotation filter. `exportSvg.ts` mirrors it for PNG/SVG export.
+
+### Group panel focus menu
+
+`TableRow` in `groupPanel.tsx` — clicking the focus icon opens an inline `FocusMenu` (fixed-positioned popup, click-outside / Esc to close). Two items: *Focus in diagram* (`focusTable(name)`) and *Focus in code* (`postToHost({ type: 'command:reveal' })` — same path the in-diagram go-to-file icon uses). Clicking the table name itself still single-clicks to focus the diagram.
 
 ### Ref ↔ inline ref Code Actions
 

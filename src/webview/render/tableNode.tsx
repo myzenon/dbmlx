@@ -18,9 +18,11 @@ interface TableNodeProps {
   color?: string;
   fkColumns?: Set<string>;
   highlightedCols?: Set<string>;
+  /** Count of refs with refChange (add/drop) attributed to this table as the FK-holder. */
+  refChangeCount?: number;
 }
 
-function TableNodeInner({ table, x, y, lod, selected, color, fkColumns, highlightedCols }: TableNodeProps) {
+function TableNodeInner({ table, x, y, lod, selected, color, fkColumns, highlightedCols, refChangeCount = 0 }: TableNodeProps) {
   const size = estimateSize(table.columns.length);
   const showOnlyPkFk = useAppStore((s) => s.showOnlyPkFk);
   const [showIcons, setShowIcons] = useState(false);
@@ -77,7 +79,7 @@ function TableNodeInner({ table, x, y, lod, selected, color, fkColumns, highligh
   for (const ic of table.indexChanges ?? []) {
     for (const col of ic.columns) pkIndexChangeByCol.set(col, ic.kind);
   }
-  const changeCount = Object.keys(changes).length;
+  const changeCount = Object.keys(changes).length + refChangeCount;
   const tableChangeClass = table.tableChange === 'add' ? ' ddd-table--add'
     : table.tableChange === 'drop' ? ' ddd-table--drop'
     : table.tableChange === 'modify' ? ' ddd-table--modify' : '';

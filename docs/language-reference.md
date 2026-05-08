@@ -117,6 +117,8 @@ Table orders {
 
 **Rule for inline refs**: `add ref:` / `drop ref:` (keyword + space + `ref:`, no comma between) is a ref-level annotation. A standalone `add` or `drop` item elsewhere in the bracket remains a column-level annotation — existing code is unaffected.
 
+**Visual side effect — FK-holder marked as modified**: a ref with `[add]`/`[drop]` (top-level Ref or inline) flags the FK-holding table (the `*`-side, i.e. the table that owns the foreign-key column) as a modified table — amber left accent + numeric count badge in the header. The referenced "PK side" table is left unchanged. For 1:1 / many-to-many refs (no single FK holder) both endpoint tables are flagged. The Table Groups panel "modified" filter picks them up too.
+
 ---
 
 ## 3. Enums

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { TableGroup } from '../../shared/types';
 import { store, useAppStore } from '../state/store';
 import { schedulePersist } from '../drag/dragController';
@@ -12,15 +12,18 @@ import {
   IconEye,
   IconEyeClosed,
   IconFocus,
+  IconGoToFile,
   IconSearch,
 } from '../icons';
 import { focusGroup, focusTable } from '../render/viewport';
+import { postToHost } from '../vscode';
 
 type AnnotationFilter = 'add' | 'drop' | 'modified';
 
 export function GroupPanel() {
   const groups = useAppStore((s) => s.schema.groups);
   const allTables = useAppStore((s) => s.schema.tables);
+  const allRefs = useAppStore((s) => s.schema.refs);
   const groupState = useAppStore((s) => s.groups);
   const hiddenTables = useAppStore((s) => s.hiddenTables);
   const [open, setOpen] = useState(true);
@@ -32,6 +35,22 @@ export function GroupPanel() {
     [allTables],
   );
 
+  // Set of tables that have at least one ref-level change attributed to them
+  // (FK-holder side; both endpoints when 1:1 / M:M is ambiguous).
+  // Mirrors the logic in app.tsx's refChangeCountByTable.
+  const refChangedTables = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of allRefs) {
+      if (!r.refChange) continue;
+      const srcMany = r.source.relation === '*';
+      const tgtMany = r.target.relation === '*';
+      if (srcMany && !tgtMany) s.add(r.source.table);
+      else if (tgtMany && !srcMany) s.add(r.target.table);
+      else { s.add(r.source.table); s.add(r.target.table); }
+    }
+    return s;
+  }, [allRefs]);
+
   // Map table qualified name → which annotation filters it matches
   const tableAnnotations = useMemo(() => {
     const map = new Map<string, Set<AnnotationFilter>>();
@@ -39,11 +58,12 @@ export function GroupPanel() {
       const flags = new Set<AnnotationFilter>();
       if (t.tableChange === 'add') flags.add('add');
       if (t.tableChange === 'drop') flags.add('drop');
-      if (t.tableChange === 'modify' || (t.columnChanges && Object.keys(t.columnChanges).length > 0)) flags.add('modified');
+      const hasColChanges = t.columnChanges && Object.keys(t.columnChanges).length > 0;
+      if (t.tableChange === 'modify' || hasColChanges || refChangedTables.has(t.name)) flags.add('modified');
       if (flags.size) map.set(t.name, flags);
     }
     return map;
-  }, [allTables]);
+  }, [allTables, refChangedTables]);
 
   const toggleAnnFilter = (f: AnnotationFilter) => {
     setAnnFilters((prev) => {
@@ -329,6 +349,7 @@ function TableRow({ tableName, hidden, annFlags, groupName, groupColor }: { tabl
   const tableColors = useAppStore((s) => s.tableColors);
   const effectiveColor = tableColors.get(tableName) ?? groupColor;
   const shortName = tableName.startsWith('public.') ? tableName.slice(7) : tableName;
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const toggle = () => {
     const next = !hidden;
     store.getState().setTableHidden(tableName, next);
@@ -345,18 +366,80 @@ function TableRow({ tableName, hidden, annFlags, groupName, groupColor }: { tabl
     }
     schedulePersist();
   };
+  const openMenu = (e: MouseEvent) => {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    // Anchor right-edge of button, drop-down below
+    setMenuPos({ x: r.right - 160, y: r.bottom + 4 });
+  };
   const badge = annFlags?.has('add') ? 'add' : annFlags?.has('drop') ? 'drop' : annFlags?.has('modified') ? 'modified' : null;
   return (
     <li class="ddd-table-row" style={effectiveColor ? { borderLeftColor: effectiveColor } : undefined}>
-      <button class="ddd-table-row__name" title={`Focus ${tableName}`} onClick={() => focusTable(tableName)}>{shortName}</button>
+      <button class="ddd-table-row__name" title={`Focus ${tableName} in diagram`} onClick={() => focusTable(tableName)}>{shortName}</button>
       {badge ? <span class={`ddd-table-ann-dot ddd-table-ann-dot--${badge}`} title={badge === 'add' ? 'New table' : badge === 'drop' ? 'Table removed' : 'Has column changes'} /> : null}
       <button
         class={`ddd-icon-btn ${hidden ? 'is-off' : ''}`}
         onClick={toggle}
         title={hidden ? 'Show table' : 'Hide table'}
       >{hidden ? <IconEyeClosed size={11} /> : <IconEye size={11} />}</button>
-      <button class="ddd-icon-btn ddd-focus-btn" title={`Focus ${tableName}`} onClick={() => focusTable(tableName)}><IconFocus size={11} /></button>
+      <button
+        class="ddd-icon-btn ddd-focus-btn"
+        title="Focus in diagram or code"
+        onClick={openMenu}
+      ><IconFocus size={11} /></button>
+      {menuPos ? (
+        <FocusMenu
+          x={menuPos.x}
+          y={menuPos.y}
+          onClose={() => setMenuPos(null)}
+          onFocusDiagram={() => focusTable(tableName)}
+          onFocusCode={() => postToHost({ type: 'command:reveal', payload: { tableName } })}
+        />
+      ) : null}
     </li>
+  );
+}
+
+interface FocusMenuProps {
+  x: number;
+  y: number;
+  onClose: () => void;
+  onFocusDiagram: () => void;
+  onFocusCode: () => void;
+}
+
+function FocusMenu({ x, y, onClose, onFocusDiagram, onFocusCode }: FocusMenuProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const t = setTimeout(() => {
+      document.addEventListener('mousedown', onDown);
+      document.addEventListener('keydown', onEsc);
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [onClose]);
+  const pick = (run: () => void) => () => { run(); onClose(); };
+  return (
+    <div
+      ref={ref}
+      class="ddd-context-menu"
+      style={{ left: `${x}px`, top: `${y}px` }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <button class="ddd-context-menu__item" onClick={pick(onFocusDiagram)}>
+        <IconFocus size={12} /><span>Focus in diagram</span>
+      </button>
+      <button class="ddd-context-menu__item" onClick={pick(onFocusCode)}>
+        <IconGoToFile size={12} /><span>Focus in code</span>
+      </button>
+    </div>
   );
 }
 

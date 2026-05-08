@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { HostToWebview, Layout, ViewportCommand, WebviewToHost } from '../shared/types';
+import type { HostToWebview, Layout, QualifiedName, Table, ViewportCommand, WebviewToHost } from '../shared/types';
 import { emptyLayout, readLayout, sidecarUri, writeLayout } from './layoutStore';
 import type { WorkspaceIndex } from './workspaceIndex';
 
@@ -33,6 +33,46 @@ export class DiagramPanel {
   public static disposeAll(): void {
     for (const panel of DiagramPanel.panels.values()) panel.dispose();
     DiagramPanel.panels.clear();
+  }
+
+  /** Number of currently open diagram panels. */
+  public static get count(): number {
+    return DiagramPanel.panels.size;
+  }
+
+  /**
+   * Find an open diagram that contains a table matching any of the candidate
+   * qualified names. Prefers the currently active panel; otherwise returns the
+   * first match in iteration order. Each panel is queried via its own resolved
+   * schema, so this works whether the diagram was opened on a root or module file.
+   */
+  public static findTableAndPanel(
+    candidates: QualifiedName[],
+  ): { panel: DiagramPanel; table: Table } | undefined {
+    const active = DiagramPanel.getActive();
+    const tryPanel = (panel: DiagramPanel): { panel: DiagramPanel; table: Table } | undefined => {
+      const t = panel.findTable(candidates);
+      return t ? { panel, table: t } : undefined;
+    };
+    if (active) {
+      const hit = tryPanel(active);
+      if (hit) return hit;
+    }
+    for (const panel of DiagramPanel.panels.values()) {
+      if (panel === active) continue;
+      const hit = tryPanel(panel);
+      if (hit) return hit;
+    }
+    return undefined;
+  }
+
+  private findTable(candidates: QualifiedName[]): Table | undefined {
+    const { schema } = this.index.getResolvedSchema(this.dbmlUri);
+    for (const name of candidates) {
+      const t = schema.tables.find((tb) => tb.name === name);
+      if (t) return t;
+    }
+    return undefined;
   }
 
   private readonly webviewPanel: vscode.WebviewPanel;

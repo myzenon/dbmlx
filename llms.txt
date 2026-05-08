@@ -1,6 +1,6 @@
 # DBMLX Language — AI Reference
 
-Version: 0.2.1
+Version: 0.2.2
 
 DBMLX (`.dbmlx`) is a superset of DBML. All standard DBML syntax is valid.
 This file documents only the dbmlx-specific extensions that don't exist in standard DBML.
@@ -129,6 +129,10 @@ Ref annotations are visualized when the corresponding view toggle is enabled:
 - `[drop]` refs: shown as red dashed lines ("Dropped refs" toggle, default off)
 - `[add]` refs: shown as green lines ("Added ref color" toggle, default off)
 
+Side effect — the FK-holder table (the `*`-side that owns the FK column) is marked as modified
+(amber left accent + count badge in the header). The referenced PK-side table is unchanged.
+1:1 and many-to-many refs flag both endpoints since there is no single FK holder.
+
 `modify:` / `before:` keys (`before:` is a clearer alias for `modify:`, both are identical):
 
 | Key | Format | Records |
@@ -151,7 +155,12 @@ All `modify:`/`before:` keys can be combined freely with standard column setting
 
 A "Focus in diagram" CodeLens link appears above each `Table` definition in the editor.
 Clicking it pans and zooms the open diagram to that table (un-hiding and un-collapsing its group if needed).
-Works from both root files and `!include`d module files.
+Works from both root files and `!include`d module files. Each open diagram is searched directly,
+so the lens resolves the table regardless of which file you opened the diagram on.
+
+The Table Groups panel also exposes per-table focus — clicking the focus icon next to a table
+opens a small menu with two options: *Focus in diagram* and *Focus in code* (jumps to the
+table's source location). Clicking the table name itself still focuses the diagram.
 
 To enable: requires `"editor.codeLens": true` in VS Code settings (default on).
 

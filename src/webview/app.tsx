@@ -112,6 +112,26 @@ export function App(_props: AppProps) {
     return m;
   }, [schema]);
 
+  /**
+   * Per-table count of refs with refChange (add/drop), attributed to the FK-holder
+   * (relation === '*'). For 1:1 / M:M (no clear FK holder) we count both endpoints.
+   * Used to surface the amber accent + count badge on tables whose only migration
+   * change is a ref add/drop.
+   */
+  const refChangeCountByTable = useMemo(() => {
+    const m = new Map<QualifiedName, number>();
+    const inc = (t: QualifiedName) => m.set(t, (m.get(t) ?? 0) + 1);
+    for (const r of schema.refs) {
+      if (!r.refChange) continue;
+      const srcMany = r.source.relation === '*';
+      const tgtMany = r.target.relation === '*';
+      if (srcMany && !tgtMany) inc(r.source.table);
+      else if (tgtMany && !srcMany) inc(r.target.table);
+      else { inc(r.source.table); inc(r.target.table); }
+    }
+    return m;
+  }, [schema]);
+
   // Persist view toggles to layout file whenever they change (skip on initial mount before layout is loaded).
   useEffect(() => {
     if (!ready) return;
@@ -580,6 +600,7 @@ export function App(_props: AppProps) {
                   color={tColor}
                   fkColumns={fkColumnsByTable.get(t.name)}
                   highlightedCols={colHighlights?.get(t.name)}
+                  refChangeCount={refChangeCountByTable.get(t.name) ?? 0}
                 />
               );
             })}
